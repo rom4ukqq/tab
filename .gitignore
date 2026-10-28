@@ -1,0 +1,9 @@
+.tools/
+.git-tmp/
+target/
+node_modules/
+dist/
+*.log
+.env
+*.db*
+apps/desktop/src-tauri/gen/
