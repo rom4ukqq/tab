@@ -99,6 +99,7 @@ impl Hub {
             turns,
             requests,
             telegram_status: self.telegram_status.read().await.clone(),
+            telegram_active: self.telegram_stop.lock().await.is_some(),
         })
     }
     pub async fn discover(&self) -> Result<Vec<Installation>> {

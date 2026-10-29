@@ -148,6 +148,7 @@ pub struct Snapshot {
     pub turns: Vec<Turn>,
     pub requests: Vec<Interaction>,
     pub telegram_status: String,
+    pub telegram_active: bool,
 }
 #[derive(Clone, Debug)]
 pub enum Control {

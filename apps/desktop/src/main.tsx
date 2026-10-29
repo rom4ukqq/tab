@@ -18,7 +18,7 @@ type Asset = { id: string; name: string; path: string; mime: string; bytes: numb
 type Turn = { id: string; session_id: string; state: string; text: string; created_at: number };
 type Request = { id: string; turn_id: string; session_id: string; kind: string; data: Record<string, any>; local_only: boolean; expires_at: number };
 type Event = { event_id: string; session_id: string; turn_id: string; sequence: number; kind: string; data: Record<string, any> };
-type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number; pin_hash?: string }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string };
+type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number; pin_hash?: string }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string; telegram_active: boolean };
 const pages = ['Агенты', 'Telegram', 'Настройки'];
 const active = (t: Turn) => ['running', 'queued', 'dispatching'].includes(t.state);
 const names: Record<string, string> = { running: 'В работе', queued: 'В очереди', completed: 'Завершено', cancelled: 'Отменено', interrupted: 'Прервано', failed: 'Ошибка', unknown: 'Результат неизвестен' };
@@ -95,7 +95,7 @@ function App() {
         </>}
         {page === 'Telegram' && <>
           <div className="card">
-            <div className="row"><h2 className="grow">Подключение бота</h2><Badge appearance="tint">{snap.telegram_status}</Badge></div>
+            <div className="row"><h2 className="grow">Подключение бота</h2><Badge appearance="tint">{snap.telegram_status}</Badge><Button appearance={snap.telegram_active ? 'secondary' : 'primary'} disabled={busy || (!snap.telegram_active && !snap.config.pin_hash) || snap.telegram_status === 'Отключается'} onClick={() => command(snap.telegram_active ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? 'Отключение…' : snap.telegram_active ? 'Отключить' : 'Подключить'}</Button></div>
             <p>Используйте отдельного бота из BotFather. Одновременно с TAB у него не должно быть другого Telegram-моста.</p>
             <div className="form-grid">
               <Field label="Bot token"><Input type="password" autoComplete="off" value={token} onChange={(_, d) => setToken(d.value)}/></Field>
@@ -108,13 +108,6 @@ function App() {
             })}>Сохранить подключение</Button>
             {!busy && telegramFormError && <p role="status">Чтобы сохранить: {telegramFormError}</p>}
             <p className="muted">Bot token хранится в Windows Credential Manager. Принимаются сообщения только от указанного User ID в личном чате.</p>
-          </div>
-          <div className="card">
-            <h2>Управление с телефона</h2>
-            <div className="row"><Button appearance="primary" disabled={busy || !snap.config.pin_hash} onClick={() => command('connect_telegram')}>Подключить</Button><Button onClick={() => command('disconnect_telegram')}>Отключить</Button><Button onClick={() => command('revoke_access')}>Закрыть доступ</Button></div>
-            <p>Откройте бота: <strong>/start → PIN → агент → задача</strong>. Проект и нужные папки обсудите с агентом прямо в чате.</p>
-            <p className="muted">Бот автоматически подключается при запуске TAB, без сообщения в личку. «Отключить» выключает автоподключение до следующего нажатия «Подключить».</p>
-            <p className="muted">Доступ закрывается после 15 минут бездействия, через 8 часов или при перезапуске Hub. Подключение бота сохраняется, PIN-доступ нужно открыть заново.</p>
           </div>
           <p className="muted">Telegram cloud chat не использует E2EE. PIN удаляется из чата по возможности; это дополнительный барьер доступа.</p>
         </>}
