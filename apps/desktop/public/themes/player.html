@@ -23,3 +23,5 @@ header,aside,.controls,.hint,#seek{display:none!important}html,body,main,.stage{
 <p class="footer">Алгоритм: <a href="https://github.com/collidingScopes/ascii" style="color:inherit" target="_blank" rel="noreferrer">collidingScopes/ascii</a>, MIT. Адаптация: предрасчёт кадров, циклический стык, палитра от акцента.</p>
 </aside></main>
 <script src="player.js"></script></html>
+let cropFrames=null,cachedCrop=null;
+function sourceCrop(){if(cropFrames===frames)return cachedCrop;cropFrames=frames;let x0=meta.columns,y0=meta.rows,x1=-1,y1=-1;const size=meta.columns*meta.rows;for(let sample=0;sample<16;sample++){const offset=Math.floor(sample*(meta.frames-1)/15)*size;for(let y=0;y<meta.rows;y++)for(let x=0;x<meta.columns;x++)if(frames[offset+y*meta.columns+x]>10){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}}cachedCrop=x1-x0>meta.columns*.35&&y1-y0>meta.rows*.35?{x:x0,y:y0,w:x1-x0+1,h:y1-y0+1}:{x:0,y:0,w:meta.columns,h:meta.rows};return cachedCrop}
