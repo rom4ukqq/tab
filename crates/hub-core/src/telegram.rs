@@ -420,6 +420,14 @@ async fn handle(
             let p: Provider = serde_json::from_value(json!(p))?;
             let pk = p.key().to_string();
             hub.db.call(move|db|{db.execute("INSERT INTO routes(chat_id,provider) VALUES(?1,?2) ON CONFLICT(chat_id) DO UPDATE SET provider=excluded.provider",params![chat,pk])?;Ok(())}).await?;
+            if c.projects.is_empty() {
+                return say(
+                    hub,
+                    chat,
+                    "Пока нет разрешённых папок. На ПК откройте Agent Hub → Настройки → Разрешённые папки → Добавить папку. Укажите название, выберите каталог и нажмите «Разрешить папку». Затем нажмите «Обновить список» ниже.",
+                    vec![vec![button("Обновить список", format!("p:{}", p.key()))]],
+                ).await;
+            }
             return say(
                 hub,
                 chat,
