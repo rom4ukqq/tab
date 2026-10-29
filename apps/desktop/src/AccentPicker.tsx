@@ -27,7 +27,7 @@ export function AccentPicker({ value, onChange }: { value: string; onChange: (va
         style={{ backgroundColor: color }} aria-label={name} title={name}
         aria-pressed={value.toUpperCase() === color} onClick={() => onChange(color)}/>) }
       <label className="accent-custom">Свой цвет
-        <input type="color" value={value} aria-label="Выбрать свой акцентный цвет" onChange={e => { if (validAccent(e.target.value)) onChange(e.target.value.toUpperCase()); }}/>
+        <span className="custom-color-chip" style={{ backgroundColor: value }}><input type="color" value={value} aria-label="Выбрать свой акцентный цвет" onChange={e => { if (validAccent(e.target.value)) onChange(e.target.value.toUpperCase()); }}/></span>
       </label>
       <output aria-label="Текущий цвет">{value.toUpperCase()}</output>
     </div>

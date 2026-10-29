@@ -10,7 +10,12 @@ html,body,#root{height:100%;overflow:hidden}
 .theme-layer .matrix-backdrop{z-index:0}
 @media(prefers-reduced-motion:reduce){.theme-layer{transition:none}}
 @media(forced-colors:active){.theme-background{display:none}}
-.matrix-grid{position:absolute;inset:0;background-image:linear-gradient(var(--hub-border) 1px,transparent 1px),linear-gradient(90deg,var(--hub-border) 1px,transparent 1px);background-size:22px 22px;opacity:.22}
+.custom-color-chip{position:relative;display:inline-block;width:32px;height:32px;border-radius:9px;overflow:hidden;border:1px solid var(--hub-border);vertical-align:middle}
+.accent-custom .custom-color-chip input[type=color]{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
+.custom-color-chip:focus-within{outline:2px solid var(--hub-accent-readable);outline-offset:3px}
+.shell .theme-dropdown{width:100%;min-height:40px;border:1px solid var(--hub-border);border-radius:10px;background:var(--hub-input)}
+.theme-listbox{background:var(--colorNeutralBackground1)!important;border:1px solid var(--colorNeutralStroke2)!important;border-radius:12px!important;padding:6px!important;box-shadow:0 12px 32px #0004!important;backdrop-filter:blur(18px)}
+.theme-listbox [role=option]{border-radius:7px;min-height:36px}
 .matrix-columns{position:absolute;inset:0;mask-image:linear-gradient(90deg,#000 0%,#0009 42%,#0008 65%,#000 100%)}
 .matrix-columns span{position:absolute;white-space:pre;font:12px/22px 'Cascadia Mono',Consolas,monospace;color:var(--matrix-ink);text-shadow:0 0 9px currentColor;animation:matrix-fall linear infinite;user-select:none}
 .matrix-columns span:nth-child(7n){color:var(--hub-accent)}

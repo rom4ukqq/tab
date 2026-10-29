@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { FluentProvider, webDarkTheme, webLightTheme, Button, Input, Switch, Field, Badge, Spinner } from '@fluentui/react-components';
+import { FluentProvider, webDarkTheme, webLightTheme, Button, Input, Switch, Field, Badge, Spinner, Dropdown, Option } from '@fluentui/react-components';
 import './style.css';
 import './bridge.css';
 import './glass.css';
@@ -123,7 +123,7 @@ function App() {
             <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label="Запускать в трее при входе в Windows"/></div>
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label="Тёмная тема"/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
-            <Field label="Фон"><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value) && value !== 'pr0n') setBackground(value); }}>{background === 'pr0n' && <option value="pr0n" disabled>Developer theme</option>}{backgroundThemes.filter(t => t.id !== 'pr0n').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+            <Field label="Фон"><Dropdown aria-label="Фон" className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={background === 'pr0n' ? 'Developer theme' : backgroundThemes.find(t => t.id === background)?.name} selectedOptions={[background]} onOptionSelect={(_, d) => { if (validBackground(d.optionValue ?? null) && d.optionValue !== 'pr0n') setBackground(d.optionValue as BackgroundTheme); }}>{backgroundThemes.filter(t => t.id !== 'pr0n').map(t => <Option key={t.id} value={t.id}>{t.name}</Option>)}</Dropdown></Field>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация фона"/></div>
             <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.</p>
           </div>
