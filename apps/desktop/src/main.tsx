@@ -7,6 +7,7 @@ import './style.css';
 import './bridge.css';
 import './glass.css';
 import { MatrixBackdrop } from './WindowChrome';
+import { AgentIcon, agentNames } from './AgentIcon';
 
 type Provider = 'codex' | 'claude' | 'omp' | 'mock';
 type Agent = { provider: Provider; executable: string; version: string; enabled: boolean; accept_unsandboxed: boolean };
@@ -117,7 +118,7 @@ function App() {
   </div></FluentProvider>;
 }
 function Empty({ title, text }: { title: string; text: string }) { return <div className="empty"><h3>{title}</h3><p>{text}</p></div>; }
-function AgentCard({ agent: a, act }: { agent: Agent; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) { const [accept, setAccept] = useState(a.accept_unsandboxed); return <div className="card"><div className="row"><h2 className="grow">{a.provider}</h2><Badge>{a.enabled ? 'Включён' : 'Отключён'}</Badge></div><p>{a.version}</p><code>{a.executable}</code><p>{a.provider === 'codex' ? 'App-server · workspace-write · approvals on-request · steering' : a.provider === 'claude' ? 'Stream JSON · permissions manual · сообщения в очередь' : 'RPC UI v1 · steering · native dialogs подтверждаются на ПК'}</p>{a.provider !== 'codex' && <Switch checked={accept} onChange={(_, d) => setAccept(d.checked)} label="Разрешаю запуск без подтверждённой OS sandbox"/>}<div className="row"><Button disabled={!a.enabled && a.provider !== 'codex' && !accept} onClick={() => act('enable_agent', { provider: a.provider, enabled: !a.enabled, acceptUnsandboxed: accept })}>{a.enabled ? 'Отключить' : 'Включить локально'}</Button><small>Runtime qualification: ещё не выполнена</small></div></div>; }
+function AgentCard({ agent: a, act }: { agent: Agent; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) { const [accept, setAccept] = useState(a.accept_unsandboxed); return <div className="card"><div className="row"><div className="agent-heading grow"><AgentIcon provider={a.provider}/><h2>{agentNames[a.provider] ?? a.provider}</h2></div><Badge>{a.enabled ? 'Включён' : 'Отключён'}</Badge></div><p>{a.version}</p><code>{a.executable}</code><p>{a.provider === 'codex' ? 'App-server · workspace-write · approvals on-request · steering' : a.provider === 'claude' ? 'Stream JSON · permissions manual · сообщения в очередь' : 'RPC UI v1 · steering · native dialogs подтверждаются на ПК'}</p>{a.provider !== 'codex' && <Switch checked={accept} onChange={(_, d) => setAccept(d.checked)} label="Разрешаю запуск без подтверждённой OS sandbox"/>}<div className="row"><Button disabled={!a.enabled && a.provider !== 'codex' && !accept} onClick={() => act('enable_agent', { provider: a.provider, enabled: !a.enabled, acceptUnsandboxed: accept })}>{a.enabled ? 'Отключить' : 'Включить локально'}</Button><small>Runtime qualification: ещё не выполнена</small></div></div>; }
 function Requests({ requests, act }: { requests: Request[]; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) { return <>{requests.map(r => <RequestCard key={r.id} r={r} act={act}/>)}</>; }
 function RequestCard({ r, act }: { r: Request; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) {
   const questions: any[] = r.data.params?.questions ?? r.data.input?.questions ?? []; const [answers, setAnswers] = useState<Record<string, string>>({}), [value, setValue] = useState('');
