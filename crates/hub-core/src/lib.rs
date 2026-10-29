@@ -4,6 +4,7 @@ pub mod process;
 pub mod security;
 pub mod store;
 pub mod telegram;
+mod telegram_render;
 
 use anyhow::{anyhow, bail, Result};
 use domain::*;

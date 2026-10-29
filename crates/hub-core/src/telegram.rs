@@ -236,7 +236,36 @@ fn button(text: &str, data: String) -> Value {
     json!({"text":clip(text,60),"callback_data":data})
 }
 fn clip(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
+    let mut units = 0;
+    s.chars().take_while(|c| { units += c.len_utf16(); units <= max }).collect()
+}
+fn session_buttons(sid: &str) -> Vec<Vec<Value>> {
+    vec![vec![button("Остановить задачу", format!("t:{sid}")), button("Закончить сессию", format!("e:{sid}"))],
+        vec![button("Мои диалоги", "sessions".into())]]
+}
+async fn stop_session(hub: &Hub, chat: i64, user: i64, sid: &str, end: bool) -> Result<bool> {
+    let sid = sid.to_string();
+    let turns = hub.db.call(move |db| {
+        let tx = db.transaction()?;
+        let current: Option<String> = tx.query_row("SELECT session_id FROM routes WHERE chat_id=?1", [chat], |r| r.get(0)).optional()?.flatten();
+        if current.as_deref() != Some(&sid) { return Ok(None); }
+        if end { tx.execute("UPDATE routes SET session_id=NULL WHERE chat_id=?1 AND session_id=?2", params![chat, sid])?; }
+        let turns = {
+            let mut stmt = tx.prepare("SELECT body FROM turns WHERE state IN ('queued','dispatching','running')")?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+            let mut ids = Vec::new();
+            for row in rows {
+                let t: Turn = serde_json::from_str(&row)?;
+                if t.session_id == sid && t.chat_id == Some(chat) && t.user_id == Some(user) { ids.push(t.id); }
+            }
+            ids
+        };
+        tx.commit()?;
+        Ok(Some(turns))
+    }).await?;
+    let Some(turns) = turns else { return Ok(false) };
+    for tid in turns { hub.cancel(&tid).await?; }
+    Ok(true)
 }
 async fn selected(hub: &Hub, chat: i64) -> Result<String> {
     hub.db
@@ -263,7 +292,7 @@ async fn sessions(hub: &Hub, chat: i64) -> Result<()> {
     say(
         hub,
         chat,
-        "Выберите сессию. Проекты добавляются на ПК.",
+        "Agent Hub · выберите диалог или создайте новый.",
         buttons,
     )
     .await
@@ -403,6 +432,18 @@ async fn handle(
     }
     if cb.is_object() {
         let data = cb["data"].as_str().unwrap_or("");
+        if data == "sessions" { return sessions(hub, chat).await; }
+        if let Some(sid) = data.strip_prefix("e:").or_else(|| data.strip_prefix("t:")) {
+            let end = data.starts_with("e:");
+            if !stop_session(hub, chat, user, sid, end).await? {
+                return say(hub, chat, "Agent Hub · эта карточка относится к другому или уже закрытому диалогу.", vec![vec![button("Мои диалоги", "sessions".into())]]).await;
+            }
+            if end {
+                if drafts.get(&chat).is_some_and(|d| d.0 == sid) { drafts.remove(&chat); }
+                return say(hub, chat, "Agent Hub · сессия закончена, остановка её задач запрошена. История сохранена; продолжить можно в «Мои диалоги».", vec![vec![button("Мои диалоги", "sessions".into()), button("Новая сессия", "new".into())]]).await;
+            }
+            return say(hub, chat, "Agent Hub · остановка задачи запрошена. Диалог остаётся открытым.", session_buttons(sid)).await;
+        }
         if data == "new" {
             return say(
                 hub,
@@ -420,15 +461,15 @@ async fn handle(
             let p: Provider = serde_json::from_value(json!(p))?;
             let s = hub.create_agent_session(p).await?;
             set_session(hub, chat, &s.id).await?;
-            return say(hub, chat, "Агент выбран. Отправьте задачу — проект и папки можно обсудить с агентом.", vec![]).await;
+            return say(hub, chat, &format!("{} · диалог открыт\nСледующее сообщение получит агент. Отправьте задачу.", s.provider.key()), session_buttons(&s.id)).await;
         }
         if data.starts_with("j:") {
             return say(hub, chat, "Выбор проекта больше не нужен. Создайте сессию и выберите агента.", vec![vec![button("Новая сессия", "new".into())]]).await;
         }
         if let Some(sid) = data.strip_prefix("s:") {
-            hub.session(sid).await?;
+            let s = hub.session(sid).await?;
             set_session(hub, chat, sid).await?;
-            return say(hub, chat, "Сессия выбрана. Отправьте задачу.", vec![]).await;
+            return say(hub, chat, &format!("{} · диалог продолжен\nСледующее сообщение получит агент.", s.provider.key()), session_buttons(sid)).await;
         }
         if let Some(rid) = data.strip_prefix("a:") {
             return hub
@@ -549,6 +590,7 @@ async fn project_events(hub: &Hub) -> Result<()> {
         let mut last=cursor;
         for(seq,body,turn)in rows{last=seq;let e:Event=serde_json::from_str(&body)?;let t:Turn=serde_json::from_str(&turn)?;let Some(chat)=t.chat_id else{continue};
             let sbody:String=tx.query_row("SELECT body FROM sessions WHERE id=?1",[&t.session_id],|r|r.get(0))?;let s:Session=serde_json::from_str(&sbody)?;let label=format!("{} · {}",s.provider.key(),clip(&s.title,80));
+            let rich = matches!(e.kind, EventKind::Message | EventKind::Completed);
             let mut card=None;let mut buttons=vec![];let mut progress=false;
             match e.kind{
                 EventKind::Message=>{let key=format!("tg_text:{}",t.id);let mut text=tx.query_row("SELECT value FROM settings WHERE key=?1",[&key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let delta=e.data["text"].as_str().unwrap_or("");if e.data["delta"]==true{text.push_str(delta)}else{text=delta.into()};text=clip(&text,200000);tx.execute("INSERT OR REPLACE INTO settings VALUES(?1,?2)",params![key,text])?;card=Some(format!("{label}\n{}",clip(&text,3500)));progress=true;},
@@ -558,7 +600,16 @@ async fn project_events(hub: &Hub) -> Result<()> {
                 EventKind::Progress=>{card=Some(format!("{label}\n{}",clip(&e.data.to_string(),1000)));progress=true;},
                 _=>{}
             }
-            if let Some(text)=card{let body=json!({"chat_id":chat,"text":text,"reply_markup":{"inline_keyboard":buttons}});let key=if progress{Some(t.id.clone())}else{None};if let Some(ref key)=key{tx.execute("DELETE FROM outbox WHERE route_key=?1 AND state='queued'",[key])?;}tx.execute("INSERT INTO outbox(id,method,body,route_key) VALUES(?1,'sendMessage',?2,?3)",params![id(),body.to_string(),key])?;}
+            if let Some(text)=card{
+                buttons.extend(session_buttons(&t.session_id));
+                let mut body=json!({"chat_id":chat,"text":text,"reply_markup":{"inline_keyboard":buttons}});
+                if rich {
+                    body["text"] = json!(crate::telegram_render::markdown(&text));
+                    body["parse_mode"] = json!("HTML");
+                    body["_plain_text"] = json!(text);
+                }
+                let key=if progress{Some(t.id.clone())}else{None};if let Some(ref key)=key{tx.execute("DELETE FROM outbox WHERE route_key=?1 AND state='queued'",[key])?;}tx.execute("INSERT INTO outbox(id,method,body,route_key) VALUES(?1,'sendMessage',?2,?3)",params![id(),body.to_string(),key])?;
+            }
         }
         tx.execute("INSERT OR REPLACE INTO settings VALUES('tg_event_cursor',?1)",[last.to_string()])?;tx.commit()?;Ok(())
     }).await
@@ -573,6 +624,7 @@ async fn deliver(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Resu
             continue;
         };
         let mut body: Value = serde_json::from_str(&body)?;
+        let plain_text = body.as_object_mut().and_then(|b| b.remove("_plain_text"));
         let chat = body["chat_id"].as_i64().unwrap_or(0);
         if let Some(last) = last_chat.get(&chat) {
             let delay = Duration::from_millis(1500).saturating_sub(last.elapsed());
@@ -603,7 +655,14 @@ async fn deliver(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Resu
                 Ok(())
             })
             .await?;
-        let result = client.call(&method, &body).await;
+        let mut result = client.call(&method, &body).await;
+        if result.as_ref().err().and_then(|e| e.downcast_ref::<ApiError>()).is_some_and(|e| e.code == 400) {
+            if let Some(text) = plain_text {
+                body.as_object_mut().unwrap().remove("parse_mode");
+                body["text"] = text;
+                result = client.call(&method, &body).await;
+            }
+        }
         last_chat.insert(chat, tokio::time::Instant::now());
         let mut state = "sent";
         let mut retry = 0;
@@ -656,9 +715,25 @@ async fn deliver(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn end_session_is_bound_to_current_route_and_keeps_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = Hub::open(dir.path().join("data")).await.unwrap();
+        let p = hub.add_project("test".into(), dir.path().to_path_buf()).await.unwrap();
+        let first = hub.create_session(p.id.clone(), Provider::Mock, "first".into(), None).await.unwrap();
+        let second = hub.create_session(p.id, Provider::Mock, "second".into(), None).await.unwrap();
+        set_session(&hub, 1, &second.id).await.unwrap();
+        assert!(!stop_session(&hub, 1, 1, &first.id, true).await.unwrap());
+        assert_eq!(selected(&hub, 1).await.unwrap(), second.id);
+        assert!(stop_session(&hub, 1, 1, &second.id, true).await.unwrap());
+        assert!(selected(&hub, 1).await.is_err());
+        assert!(hub.session(&second.id).await.is_ok());
+        assert!(!stop_session(&hub, 1, 1, &second.id, true).await.unwrap());
+        assert!(session_buttons(&second.id).iter().flatten().all(|b| b["callback_data"].as_str().unwrap().len() <= 64));
+    }
     #[test]
     fn unicode_limit() {
-        assert_eq!(clip("😀абв", 2), "😀а");
+        assert_eq!(clip("😀абв", 2), "😀");
         assert!(
             button("Allow", format!("a:{}", id()))["callback_data"]
                 .as_str()
