@@ -58,22 +58,21 @@ function App() {
   return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'}>
     <MatrixBackdrop animate={animateBackground}/>
     <aside>
-      <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub<small>Ваши агенты рядом</small></div></div>
+      <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub</div></div>
       <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>
       <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? 'Этот компьютер'}<small>{snap?.telegram_status ?? 'Запуск…'}</small><small>Активных задач: {snap?.turns.filter(active).length ?? 0}</small></div>
     </aside>
     <main>
-      <header><div><div className="eyebrow">Agent Hub / {page}</div><h1>{page}</h1></div><Button className="stop" appearance="subtle" onClick={() => command('emergency_stop')}>Остановить всё</Button></header>
+      <header><div><div className="eyebrow">Agent Hub / {page}</div><h1>{page}</h1></div></header>
       {error && <div className="banner error" role="alert">{error}<Button appearance="subtle" onClick={() => setError('')}>Закрыть</Button></div>}
       {notice && <div className="banner" role="status">{notice}</div>}
       {!snap ? <Spinner label="Открываем локальную базу…"/> : <>
         <Requests requests={snap.requests} act={command}/>
         {page === 'Агенты' && <>
-          <div className="intro"><Badge appearance="tint" color="informative">Настройте один раз</Badge><h2>Подключите ваши CLI-агенты.</h2><p>Задачи, сессии и файлы — в Telegram. Здесь достаточно выбрать агенты и разрешить их запуск.</p></div>
+          <div className="intro"><h2>Подключите ваши CLI-агенты</h2><p>Отметьте агентов, к которым будет доступ через Telegram.</p></div>
           <div className="section-heading"><span>Агенты на этом компьютере</span><Button appearance="primary" disabled={busy} onClick={() => command('discover')}>Найти агенты</Button></div>
           {!snap.config.installations.length && <Empty title="Агенты ещё не найдены" text="Установите и авторизуйте Codex, Claude Code или OMP, затем нажмите «Найти агенты»."/>}
-          {snap.config.installations.map(a => <AgentCard key={a.provider} agent={a} act={command}/>)}
-          <div className="card row"><div className="grow"><strong>Дальше — подключение бота</strong><p>Укажите bot token, ваш Telegram User ID и PIN.</p></div><Button onClick={() => setPage('Telegram')}>Открыть Telegram</Button></div>
+          {snap.config.installations.map(a => <AgentCard key={a.provider} agent={a} busy={busy} act={command}/>)}
         </>}
         {page === 'Telegram' && <>
           <div className="card">
@@ -118,7 +117,21 @@ function App() {
   </div></FluentProvider>;
 }
 function Empty({ title, text }: { title: string; text: string }) { return <div className="empty"><h3>{title}</h3><p>{text}</p></div>; }
-function AgentCard({ agent: a, act }: { agent: Agent; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) { const [accept, setAccept] = useState(a.accept_unsandboxed); return <div className="card"><div className="row"><div className="agent-heading grow"><AgentIcon provider={a.provider}/><h2>{agentNames[a.provider] ?? a.provider}</h2></div><Badge>{a.enabled ? 'Включён' : 'Отключён'}</Badge></div><p>{a.version}</p><code>{a.executable}</code><p>{a.provider === 'codex' ? 'App-server · workspace-write · approvals on-request · steering' : a.provider === 'claude' ? 'Stream JSON · permissions manual · сообщения в очередь' : 'RPC UI v1 · steering · native dialogs подтверждаются на ПК'}</p>{a.provider !== 'codex' && <Switch checked={accept} onChange={(_, d) => setAccept(d.checked)} label="Разрешаю запуск без подтверждённой OS sandbox"/>}<div className="row"><Button disabled={!a.enabled && a.provider !== 'codex' && !accept} onClick={() => act('enable_agent', { provider: a.provider, enabled: !a.enabled, acceptUnsandboxed: accept })}>{a.enabled ? 'Отключить' : 'Включить локально'}</Button><small>Runtime qualification: ещё не выполнена</small></div></div>; }
+function AgentCard({ agent: a, busy, act }: { agent: Agent; busy: boolean; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) {
+  const [accept, setAccept] = useState(a.accept_unsandboxed);
+  const name = agentNames[a.provider] ?? a.provider;
+  const needsConsent = !a.enabled && a.provider !== 'codex' && !accept;
+  return <div className="card">
+    <div className="row">
+      <div className="agent-heading grow"><AgentIcon provider={a.provider}/><h2>{name}</h2></div>
+      <Switch checked={a.enabled} disabled={busy || needsConsent} aria-label={`Доступ к ${name}`} title={needsConsent ? 'Сначала разрешите запуск без OS sandbox ниже' : `Доступ к ${name}`} onChange={(_, d) => act('enable_agent', { provider: a.provider, enabled: d.checked, acceptUnsandboxed: accept })}/>
+    </div>
+    <p>{a.version}</p><code>{a.executable}</code>
+    <p>{a.provider === 'codex' ? 'App-server · workspace-write · approvals on-request · steering' : a.provider === 'claude' ? 'Stream JSON · permissions manual · сообщения в очередь' : 'RPC UI v1 · steering · native dialogs подтверждаются на ПК'}</p>
+    {a.provider !== 'codex' && <Switch checked={accept} disabled={busy} onChange={(_, d) => setAccept(d.checked)} label="Разрешаю запуск без подтверждённой OS sandbox"/>}
+    <div className="row"><small>Runtime qualification: ещё не выполнена</small></div>
+  </div>;
+}
 function Requests({ requests, act }: { requests: Request[]; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) { return <>{requests.map(r => <RequestCard key={r.id} r={r} act={act}/>)}</>; }
 function RequestCard({ r, act }: { r: Request; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) {
   const questions: any[] = r.data.params?.questions ?? r.data.input?.questions ?? []; const [answers, setAnswers] = useState<Record<string, string>>({}), [value, setValue] = useState('');
