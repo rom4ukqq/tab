@@ -273,7 +273,9 @@ fn clip(s: &str, max: usize) -> String {
     s.chars().take_while(|c| { units += c.len_utf16(); units <= max }).collect()
 }
 fn session_buttons(sid: &str) -> Vec<Vec<Value>> {
-    vec![vec![button("Остановить задачу", format!("t:{sid}")), button("Закончить сессию", format!("e:{sid}"))]]
+    let mut end_session = button("Закончить сессию", format!("e:{sid}"));
+    end_session["style"] = json!("danger");
+    vec![vec![button("Остановить задачу", format!("t:{sid}")), end_session]]
 }
 async fn session_intro(hub: &Hub, chat: i64, session: &Session, resumed: bool) -> Result<()> {
     let text = {
