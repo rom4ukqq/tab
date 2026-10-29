@@ -154,6 +154,32 @@ impl Hub {
         self.persist_config(&c).await?;
         Ok(project)
     }
+    pub async fn create_agent_session(&self, provider: Provider) -> Result<Session> {
+        let mut c = self.config.write().await;
+        if !c.installations.iter().any(|i| i.provider == provider && i.enabled) {
+            bail!("Агент отключён или не обнаружен")
+        }
+        // A neutral cwd is required by CLI transports, not a user-selected project.
+        // Keep it separate from Hub credentials and database; retain native approvals.
+        let workspaces = self.data_dir.join("workspaces");
+        security::reject_links(&self.data_dir)?;
+        std::fs::create_dir_all(&workspaces)?;
+        security::reject_links(&workspaces)?;
+        let root = workspaces.join(provider.key());
+        std::fs::create_dir_all(&root)?;
+        let root = security::safe_root(&root)?;
+        let project_id = if let Some(p) = c.projects.iter().find(|p| p.root == root) {
+            p.id.clone()
+        } else {
+            let p = Project { id: id(), name: format!("{} workspace", provider.key()), root };
+            let project_id = p.id.clone();
+            c.projects.push(p);
+            self.persist_config(&c).await?;
+            project_id
+        };
+        drop(c);
+        self.create_session(project_id, provider, "Telegram".into(), None).await
+    }
     pub async fn create_session(
         &self,
         project_id: String,

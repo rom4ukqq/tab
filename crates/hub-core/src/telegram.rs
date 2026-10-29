@@ -407,7 +407,7 @@ async fn handle(
             return say(
                 hub,
                 chat,
-                "Выберите агент",
+                "Выберите агента",
                 c.installations
                     .iter()
                     .filter(|i| i.enabled)
@@ -418,48 +418,12 @@ async fn handle(
         }
         if let Some(p) = data.strip_prefix("p:") {
             let p: Provider = serde_json::from_value(json!(p))?;
-            let pk = p.key().to_string();
-            hub.db.call(move|db|{db.execute("INSERT INTO routes(chat_id,provider) VALUES(?1,?2) ON CONFLICT(chat_id) DO UPDATE SET provider=excluded.provider",params![chat,pk])?;Ok(())}).await?;
-            if c.projects.is_empty() {
-                return say(
-                    hub,
-                    chat,
-                    "Пока нет разрешённых папок. На ПК откройте Agent Hub → Настройки → Разрешённые папки → Добавить папку. Укажите название, выберите каталог и нажмите «Разрешить папку». Затем нажмите «Обновить список» ниже.",
-                    vec![vec![button("Обновить список", format!("p:{}", p.key()))]],
-                ).await;
-            }
-            return say(
-                hub,
-                chat,
-                "Выберите проект",
-                c.projects
-                    .iter()
-                    .map(|p| vec![button(&p.name, format!("j:{}", p.id))])
-                    .collect(),
-            )
-            .await;
-        }
-        if let Some(project) = data.strip_prefix("j:") {
-            let p: String = hub
-                .db
-                .call(move |db| {
-                    Ok(db.query_row(
-                        "SELECT provider FROM routes WHERE chat_id=?1",
-                        [chat],
-                        |r| r.get(0),
-                    )?)
-                })
-                .await?;
-            let s = hub
-                .create_session(
-                    project.into(),
-                    serde_json::from_value(json!(p))?,
-                    "Telegram".into(),
-                    None,
-                )
-                .await?;
+            let s = hub.create_agent_session(p).await?;
             set_session(hub, chat, &s.id).await?;
-            return say(hub, chat, "Сессия создана. Отправьте задачу.", vec![]).await;
+            return say(hub, chat, "Агент выбран. Отправьте задачу — проект и папки можно обсудить с агентом.", vec![]).await;
+        }
+        if data.starts_with("j:") {
+            return say(hub, chat, "Выбор проекта больше не нужен. Создайте сессию и выберите агента.", vec![vec![button("Новая сессия", "new".into())]]).await;
         }
         if let Some(sid) = data.strip_prefix("s:") {
             hub.session(sid).await?;

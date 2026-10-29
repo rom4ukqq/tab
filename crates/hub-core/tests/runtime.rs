@@ -42,6 +42,28 @@ async fn hub() -> (tempfile::TempDir, Arc<Hub>, Session) {
 }
 
 #[tokio::test]
+async fn agent_session_needs_no_project_setup() {
+    let d = tempfile::tempdir().unwrap();
+    let h = Hub::open(d.path().join("data")).await.unwrap();
+    assert!(h.create_agent_session(Provider::Mock).await.is_err());
+    h.config.write().await.installations.push(Installation {
+        provider: Provider::Mock,
+        executable: PathBuf::new(),
+        version: "mock".into(),
+        enabled: true,
+        accept_unsandboxed: false,
+    });
+    let first = h.create_agent_session(Provider::Mock).await.unwrap();
+    let second = h.create_agent_session(Provider::Mock).await.unwrap();
+    assert_ne!(first.id, second.id);
+    assert_eq!(first.project_id, second.project_id);
+    let root = h.config.read().await.projects[0].root.clone();
+    assert_eq!(root, d.path().join("data/workspaces/mock").canonicalize().unwrap());
+    let turn = h.submit(first.id, "hello".into(), vec![], None).await.unwrap();
+    assert_eq!(wait_terminal(&h, &turn.id).await.state, "completed");
+}
+
+#[tokio::test]
 async fn queue_and_atomic_approval_consume() {
     let (_d, h, s) = hub().await;
     let first = h

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
 import { FluentProvider, webDarkTheme, webLightTheme, Button, Input, Switch, Field, Badge, Spinner } from '@fluentui/react-components';
 import './style.css';
 import './bridge.css';
@@ -27,7 +26,6 @@ function App() {
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
   useEffect(() => { localStorage.setItem('agent-hub-theme', dark ? 'dark' : 'light'); }, [dark]);
-  const [projectName, setProjectName] = useState(''), [root, setRoot] = useState('');
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
   const numericUser = user.trim();
   const userIdError = !numericUser ? 'Введите ваш числовой Telegram ID.' :
@@ -89,22 +87,12 @@ function App() {
           <div className="card">
             <h2>Управление с телефона</h2>
             <div className="row"><Button appearance="primary" disabled={busy || !snap.config.pin_hash} onClick={() => command('connect_telegram')}>Подключить</Button><Button onClick={() => command('disconnect_telegram')}>Отключить</Button><Button onClick={() => command('revoke_access')}>Закрыть доступ</Button></div>
-            <p>Откройте бота: <strong>/start → PIN → агент → папка → сессия</strong>. После этого отправляйте задачи и вложения.</p>
-            {!snap.config.projects.length && <div className="banner">Сначала добавьте разрешённую папку.<Button appearance="subtle" onClick={() => setPage('Настройки')}>Открыть настройки</Button></div>}
+            <p>Откройте бота: <strong>/start → PIN → агент → задача</strong>. Проект и нужные папки обсудите с агентом прямо в чате.</p>
             <p className="muted">Доступ закрывается после 15 минут бездействия, через 8 часов или при перезапуске Hub.</p>
           </div>
           <p className="muted">Telegram cloud chat не использует E2EE. PIN удаляется из чата по возможности; это дополнительный барьер доступа.</p>
         </>}
         {page === 'Настройки' && <>
-          <div className="card">
-            <h2>Разрешённые папки</h2><p>Агент работает в папке, выбранной в Telegram. Новые папки можно разрешить только здесь.</p>
-            {snap.config.projects.map(p => <div className="folder" key={p.id}><strong>{p.name}</strong><code>{p.root}</code></div>)}
-            <details open={!snap.config.projects.length}><summary>Добавить папку</summary><div className="form-grid">
-              <Field label="Название для Telegram"><Input value={projectName} onChange={(_, d) => setProjectName(d.value)}/></Field>
-              <Field label="Путь"><div className="row"><Input className="grow" value={root} onChange={(_, d) => setRoot(d.value)}/><Button onClick={() => run(async () => { const p = await open({ directory: true, multiple: false }); if (typeof p === 'string') setRoot(p); })}>Выбрать</Button></div></Field>
-            </div><Button appearance="primary" disabled={busy || !root || !projectName} onClick={() => run(async () => { await invoke('add_project', { name: projectName, root }); setRoot(''); setProjectName(''); })}>Разрешить папку</Button></details>
-            <p className="muted">Список папок ограничивает выбор через Hub. Изоляция самого CLI зависит от агента и его sandbox.</p>
-          </div>
           <div className="card"><h2>Приложение</h2>
             <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label="Запускать в трее при входе в Windows"/></div>
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label="Тёмная тема"/></div>
