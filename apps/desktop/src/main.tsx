@@ -8,6 +8,7 @@ import './bridge.css';
 import './glass.css';
 import { MatrixBackdrop } from './WindowChrome';
 import { AgentIcon, agentNames } from './AgentIcon';
+import { AccentPicker, accentColors, defaultAccent, validAccent } from './AccentPicker';
 
 type Provider = 'codex' | 'claude' | 'omp' | 'mock';
 type Agent = { provider: Provider; executable: string; version: string; enabled: boolean; accept_unsandboxed: boolean };
@@ -29,6 +30,8 @@ function App() {
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
   useEffect(() => { localStorage.setItem('agent-hub-theme', dark ? 'dark' : 'light'); }, [dark]);
+  const [accent, setAccent] = useState(() => { const saved = localStorage.getItem('agent-hub-accent'); return validAccent(saved) ? saved : defaultAccent; });
+  useEffect(() => { localStorage.setItem('agent-hub-accent', accent); }, [accent]);
   useEffect(() => { invoke('set_window_theme', { dark }).catch(e => setError(String(e))); }, [dark]);
   const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('agent-hub-matrix-motion') !== 'off');
   useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
@@ -54,8 +57,9 @@ function App() {
     const timer = setInterval(() => refresh().catch(() => {}), 2000);
     return () => { disposed = true; clean.forEach(f => f()); clearInterval(timer); };
   }, [refresh]);
-  const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: '#FECA17', colorBrandBackgroundHover: '#FFD747', colorBrandBackgroundPressed: '#E4B200', colorNeutralForegroundOnBrand: '#242015', colorBrandForeground1: dark ? '#FECA17' : '#705500', colorBrandStroke1: '#FECA17', colorCompoundBrandBackground: '#FECA17', colorCompoundBrandBackgroundHover: '#FFD747', colorCompoundBrandBackgroundPressed: '#E4B200', colorCompoundBrandStroke: '#FECA17', colorCompoundBrandStrokeHover: '#FFD747', colorCompoundBrandStrokePressed: '#E4B200', borderRadiusMedium: '8px' };
-  return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'}>
+  const accentPalette = accentColors(accent, dark);
+  const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: accent, colorBrandBackgroundHover: accentPalette.hover, colorBrandBackgroundPressed: accentPalette.pressed, colorNeutralForegroundOnBrand: accentPalette.text, colorBrandForeground1: accentPalette.foreground, colorBrandStroke1: accent, colorCompoundBrandBackground: accent, colorCompoundBrandBackgroundHover: accentPalette.hover, colorCompoundBrandBackgroundPressed: accentPalette.pressed, colorCompoundBrandStroke: accent, colorCompoundBrandStrokeHover: accentPalette.hover, colorCompoundBrandStrokePressed: accentPalette.pressed, borderRadiusMedium: '8px' };
+  return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'} style={{ '--hub-accent': accent, '--hub-accent-readable': accentPalette.foreground } as React.CSSProperties}>
     <MatrixBackdrop animate={animateBackground}/>
     <aside>
       <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub</div></div>
@@ -103,6 +107,7 @@ function App() {
           <div className="card"><h2>Приложение</h2>
             <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label="Запускать в трее при входе в Windows"/></div>
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label="Тёмная тема"/></div>
+            <AccentPicker value={accent} onChange={setAccent}/>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация ASCII-фона"/></div>
             <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает Hub и его задачи.</p>
           </div>
