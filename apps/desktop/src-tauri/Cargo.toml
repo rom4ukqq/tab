@@ -1,5 +1,5 @@
 [package]
-name = "agent-hub-desktop"
+name = "tab-desktop"
 version.workspace = true
 edition.workspace = true
 

@@ -89,7 +89,7 @@ export async function importTheme(file: File): Promise<ThemeInfo> {
   const archive = await file.arrayBuffer(), entries = readArchive(archive), json = entries.get('theme.json');
   if (!json || json.length > 64 * 1024) throw invalid();
   const manifest = JSON.parse(decoder.decode(json)), d = manifest?.data;
-  if (manifest.format !== 'agent-hub-ascii-theme' || manifest.version !== 1 || !d || d.layout !== 'frame-row-column-u8-luminance') throw invalid();
+  if (!['tab-ascii-theme', 'agent-hub-ascii-theme'].includes(manifest.format) || manifest.version !== 1 || !d || d.layout !== 'frame-row-column-u8-luminance') throw invalid();
   if (typeof manifest.name !== 'string' || !manifest.name.trim() || manifest.name.length > 80) throw invalid();
   for (const key of ['columns', 'rows', 'frames', 'width', 'height', 'uncompressedBytes']) if (!Number.isSafeInteger(d[key]) || d[key] < 1) throw invalid();
   if (d.columns > 512 || d.rows > 512 || d.width > 16384 || d.height > 16384 || d.frames < 2 || d.frames > 50000 || typeof d.sourceFps !== 'number' || !Number.isFinite(d.sourceFps) || d.sourceFps <= 0 || d.sourceFps > 240 || d.uncompressedBytes > LIMIT || d.columns * d.rows * d.frames !== d.uncompressedBytes) throw invalid();

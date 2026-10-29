@@ -143,7 +143,7 @@ impl Client {
         let projects = hub.config.read().await.projects.clone();
         let root = projects
             .iter()
-            .map(|p| p.root.join(".agent-hub/outbox"))
+            .map(|p| p.root.join(".tab/outbox"))
             .find(|root| a.path.starts_with(root))
             .ok_or_else(|| anyhow!("Экспорт разрешён только из outbox"))?;
         let bytes = security::read_safe_file(&a.path, &root, 50 * 1024 * 1024)?;
@@ -545,7 +545,7 @@ async fn handle(
         "/pcs"|"/status"=>{let s=hub.snapshot().await?;let active=s.turns.iter().filter(|t|t.user_id==Some(user)&&["running","queued"].contains(&t.state.as_str())).count();return say(hub,chat,&format!("{} · online\nАктивных/ожидающих задач: {active}\n{}",c.machine_name,s.telegram_status),vec![]).await},
         "/help"=>return say(hub,chat,"/start — выбрать агента\n/stop — остановить выбранную сессию\n/lock — отозвать доступ\n/status — состояние\n/answer ID JSON — ответ на конкретный вопрос\nФайлы: прикрепите несколько и нажмите «Отправить вложения». Оригинал изображения отправляйте как document.",vec![]).await,
         "/stop"=>{let sid=selected(hub,chat).await?;for t in hub.snapshot().await?.turns.iter().filter(|t|t.session_id==sid&&t.user_id==Some(user)){hub.cancel(&t.id).await?}return Ok(())},
-        "/files"=>{let sid=selected(hub,chat).await?;let files=hub.output_files(&sid).await?;return say(hub,chat,"Файлы из .agent-hub/outbox. Нажатие отправляет оригинальные байты как document.",files.iter().map(|a|vec![button(&a.name,format!("f:{}",a.id))]).collect()).await},
+        "/files"=>{let sid=selected(hub,chat).await?;let files=hub.output_files(&sid).await?;return say(hub,chat,"Файлы из .tab/outbox. Нажатие отправляет оригинальные байты как document.",files.iter().map(|a|vec![button(&a.name,format!("f:{}",a.id))]).collect()).await},
         _=>{}
     }
     if let Some(answer) = text.strip_prefix("/answer ") {

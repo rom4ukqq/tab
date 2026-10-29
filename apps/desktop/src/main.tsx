@@ -22,6 +22,15 @@ type Request = { id: string; turn_id: string; session_id: string; kind: string; 
 type Event = { event_id: string; session_id: string; turn_id: string; sequence: number; kind: string; data: Record<string, any> };
 type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string; telegram_active: boolean; telegram_authorized: boolean; pairing_code?: { code: string; expires_at: number } };
 const pages = ['Агенты', 'Telegram', 'Настройки'];
+// Migrate preferences once while preserving imported themes in the same WebView store.
+for (const suffix of ['theme', 'accent', 'matrix-motion', 'background']) {
+  const legacy = `agent-hub-${suffix}`, current = `tab-${suffix}`;
+  const value = localStorage.getItem(legacy);
+  if (value !== null) {
+    if (localStorage.getItem(current) === null) localStorage.setItem(current, value);
+    localStorage.removeItem(legacy);
+  }
+}
 const active = (t: Turn) => ['running', 'queued', 'dispatching'].includes(t.state);
 const names: Record<string, string> = { running: 'В работе', queued: 'В очереди', completed: 'Завершено', cancelled: 'Отменено', interrupted: 'Прервано', failed: 'Ошибка', unknown: 'Результат неизвестен' };
 function NavIcon({ index }: { index: number }) {
@@ -34,16 +43,16 @@ function App() {
   const [page, setPage] = useState('Агенты'), [snap, setSnap] = useState<Snapshot>();
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(timer); }, [notice]);
-  const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
-  useEffect(() => { localStorage.setItem('agent-hub-theme', dark ? 'dark' : 'light'); }, [dark]);
-  const [accent, setAccent] = useState(() => { const saved = localStorage.getItem('agent-hub-accent'); return validAccent(saved) ? saved : defaultAccent; });
-  useEffect(() => { localStorage.setItem('agent-hub-accent', accent); }, [accent]);
+  const [dark, setDark] = useState(() => { const saved = localStorage.getItem('tab-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
+  useEffect(() => { localStorage.setItem('tab-theme', dark ? 'dark' : 'light'); }, [dark]);
+  const [accent, setAccent] = useState(() => { const saved = localStorage.getItem('tab-accent'); return validAccent(saved) ? saved : defaultAccent; });
+  useEffect(() => { localStorage.setItem('tab-accent', accent); }, [accent]);
   useEffect(() => { invoke('set_window_theme', { dark }).catch(e => setError(String(e))); }, [dark]);
-  const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('agent-hub-matrix-motion') !== 'off');
+  const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('tab-matrix-motion') !== 'off');
   const [background, setBackground] = useState<BackgroundTheme>('matrix');
   const [importedThemes, setImportedThemes] = useState<ThemeInfo[]>([]), [importingTheme, setImportingTheme] = useState(false);
   const themeFile = useRef<HTMLInputElement>(null);
-  const savedBackground = useRef(localStorage.getItem('agent-hub-background'));
+  const savedBackground = useRef(localStorage.getItem('tab-background'));
   const backgroundThemes = [{ id: 'matrix', name: t('Матрица') }, ...importedThemes];
   useEffect(() => {
     let disposed = false;
@@ -69,8 +78,8 @@ function App() {
     window.addEventListener('keydown', unlock);
     return () => window.removeEventListener('keydown', unlock);
   }, []);
-  useEffect(() => { localStorage.setItem('agent-hub-background', background); }, [background]);
-  useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
+  useEffect(() => { localStorage.setItem('tab-background', background); }, [background]);
+  useEffect(() => { localStorage.setItem('tab-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
   const [token, setToken] = useState(''), [user, setUser] = useState('');
   const numericUser = user.trim();
   const userIdError = !numericUser ? t("Введите ваш числовой Telegram ID.") :
@@ -142,7 +151,7 @@ function App() {
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label={t("Тёмная тема")}/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
             <Field label={t("Фон")}><Dropdown aria-label={t("Фон")} className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={backgroundThemes.find(item => item.id === background)?.name ?? t('Матрица')} selectedOptions={[background]} onOptionSelect={(_, d) => { if (backgroundThemes.some(item => item.id === d.optionValue)) setBackground(d.optionValue!); }}>{backgroundThemes.map(item => <Option key={item.id} value={item.id}>{item.name}</Option>)}</Dropdown></Field>
-            <div className="theme-import-row"><Button appearance="subtle" className="theme-import-button" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg>} disabled={importingTheme} onClick={() => themeFile.current?.click()}>{t(importingTheme ? 'Импорт…' : 'Импорт темы')}</Button><input ref={themeFile} type="file" accept=".zip,.agent-hub-theme.zip" hidden onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (file && !importingTheme) void addTheme(file); }}/><span className="muted">{t('ZIP из TAB Theme Generator')}</span></div>
+            <div className="theme-import-row"><Button appearance="subtle" className="theme-import-button" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg>} disabled={importingTheme} onClick={() => themeFile.current?.click()}>{t(importingTheme ? 'Импорт…' : 'Импорт темы')}</Button><input ref={themeFile} type="file" accept=".zip,.tab-theme.zip" hidden onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (file && !importingTheme) void addTheme(file); }}/><span className="muted">{t('ZIP из TAB Theme Generator')}</span></div>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label={t("Анимация фона")}/></div>
             <p className="muted">{t("Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.")}</p>
           </div>
@@ -154,7 +163,7 @@ function App() {
             <div className="row"><Button appearance="subtle" className="theme-import-button" onClick={() => command('revoke_access')}>{t("Отозвать доступ")}</Button><Button appearance="subtle" className="theme-import-button" onClick={() => run(async () => setAudit(await invoke('audit')))}>{t("Показать аудит")}</Button></div>
             {audit.map((a, i) => <div className="audit" key={i}><time>{new Date(a.at * 1000).toLocaleString(language)}</time><strong>{a.action}</strong><code>{a.target}</code></div>)}
           </details>
-          <details className="card"><summary>{t("О сборке")}</summary><p>{t("TAB — Telegram Agents Bridge 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.")}</p><p>{t("Данные: %LOCALAPPDATA%\\AgentHub (сохранены при переименовании). Multi-PC, голос, Computer Use и подписанные обновления пока не включены.")}</p></details>
+          <details className="card"><summary>{t("О сборке")}</summary><p>{t("TAB — Telegram Agents Bridge 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.")}</p><p>{t("Данные: %LOCALAPPDATA%\\TAB. Multi-PC, голос, Computer Use и подписанные обновления пока не включены.")}</p></details>
         </>}
       </>}
     </main>

@@ -16,7 +16,7 @@ with zipfile.ZipFile(archive) as z:
         if info.file_size > 64 * 1024 * 1024:
             raise ValueError('Entry too large')
     manifest = json.loads(z.read('theme.json'))
-    assert manifest['format'] == 'agent-hub-ascii-theme' and manifest['version'] == 1
+    assert manifest['format'] in ('tab-ascii-theme', 'agent-hub-ascii-theme') and manifest['version'] == 1
     data = manifest['data']
     assert data['encoding'] == 'gzip' and data['path'] == 'frames.bin.gz'
     assert data['uncompressedBytes'] <= 64 * 1024 * 1024

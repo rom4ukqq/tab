@@ -14,6 +14,26 @@ pub fn random_secret() -> String {
     rand::thread_rng().fill_bytes(&mut b);
     base64::engine::general_purpose::STANDARD.encode(b)
 }
+
+/// One-time rename; never merge or overwrite two existing installations.
+pub fn migrate_directory(parent: &Path, old_name: &str, new_name: &str) -> Result<PathBuf> {
+    let destination = parent.join(new_name);
+    let parent = parent.canonicalize()?;
+    let old = parent.join(old_name);
+    let new = parent.join(new_name);
+    if old.parent() != Some(parent.as_path()) || new.parent() != Some(parent.as_path()) {
+        bail!("Invalid migration directory")
+    }
+    if old.try_exists()? {
+        reject_links(&old)?;
+        if new.try_exists()? {
+            bail!("Both {} and {} exist; migration requires resolving the conflict", old.display(), new.display())
+        }
+        std::fs::rename(&old, &new)?;
+    }
+    if new.try_exists()? { reject_links(&new)?; }
+    Ok(destination)
+}
 pub fn random_pairing_code() -> String {
     use rand::Rng;
     format!("{:06}", rand::rngs::OsRng.gen_range(0..1_000_000u32))
@@ -175,9 +195,21 @@ pub fn read_safe_file(path: &Path, root: &Path, max: u64) -> Result<Vec<u8>> {
 
 #[cfg(windows)]
 pub fn secret_get(name: &str) -> Result<Option<String>> {
+    if let Some(value) = secret_read_target(&format!("TAB/{name}"))? { return Ok(Some(value)); }
+    // Read legacy credentials only to migrate existing installations.
+    let legacy = format!("AgentHub/{name}");
+    let Some(value) = secret_read_target(&legacy)? else { return Ok(None); };
+    secret_set(name, &value)?;
+    use windows_sys::Win32::Security::Credentials::*;
+    let target: Vec<u16> = legacy.encode_utf16().chain(Some(0)).collect();
+    unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0); }
+    Ok(Some(value))
+}
+#[cfg(windows)]
+fn secret_read_target(name: &str) -> Result<Option<String>> {
     use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
     use windows_sys::Win32::Security::Credentials::*;
-    let target: Vec<u16> = format!("AgentHub/{name}")
+    let target: Vec<u16> = name
         .encode_utf16()
         .chain(Some(0))
         .collect();
@@ -201,7 +233,7 @@ pub fn secret_get(name: &str) -> Result<Option<String>> {
 #[cfg(windows)]
 pub fn secret_set(name: &str, value: &str) -> Result<()> {
     use windows_sys::Win32::Security::Credentials::*;
-    let mut target: Vec<u16> = format!("AgentHub/{name}")
+    let mut target: Vec<u16> = format!("TAB/{name}")
         .encode_utf16()
         .chain(Some(0))
         .collect();
@@ -234,6 +266,22 @@ pub fn secret_set(_: &str, _: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tab_directory_migration_preserves_data_and_rejects_conflicts() {
+        let parent = tempfile::tempdir().unwrap();
+        let old = parent.path().join("AgentHub");
+        std::fs::create_dir(&old).unwrap();
+        std::fs::write(old.join("config"), b"retained").unwrap();
+        let new = migrate_directory(parent.path(), "AgentHub", "TAB").unwrap();
+        assert!(!old.exists());
+        assert_eq!(std::fs::read(new.join("config")).unwrap(), b"retained");
+        assert_eq!(migrate_directory(parent.path(), "AgentHub", "TAB").unwrap(), new);
+        std::fs::create_dir(&old).unwrap();
+        std::fs::write(old.join("other"), b"untouched").unwrap();
+        assert!(migrate_directory(parent.path(), "AgentHub", "TAB").is_err());
+        assert_eq!(std::fs::read(old.join("other")).unwrap(), b"untouched");
+        assert_eq!(std::fs::read(new.join("config")).unwrap(), b"retained");
+    }
     #[test]
     fn pin_is_peppered() {
         let h = hash_pin("123456", "one").unwrap();

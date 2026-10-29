@@ -181,6 +181,12 @@ fn set_ui_language(app: tauri::AppHandle, language: String) -> R<()> {
 }
 
 fn main() {
+    // Run before WebView creation so its preferences and imported themes move too.
+    let local = PathBuf::from(std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA is required"));
+    let dir = hub_core::security::migrate_directory(&local, "AgentHub", "TAB")
+        .expect("Could not migrate TAB data directory");
+    hub_core::security::migrate_directory(&local, "local.agenthub.desktop", "local.tab.desktop")
+        .expect("Could not migrate TAB WebView storage");
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(w) = app.get_webview_window("main") {
@@ -194,8 +200,7 @@ fn main() {
                 .args(["--background"])
                 .build(),
         )
-        .setup(|app| {
-            let dir = PathBuf::from(std::env::var("LOCALAPPDATA")?).join("AgentHub");
+        .setup(move |app| {
             let hub = tauri::async_runtime::block_on(Hub::open(dir))?;
             app.manage(hub.clone());
             let reconnect = hub.clone();

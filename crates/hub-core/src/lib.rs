@@ -51,6 +51,18 @@ impl Hub {
             Some(s) => serde_json::from_str(&s)?,
             None => Config::default(),
         };
+        if data_dir.file_name().is_some_and(|name| name == "TAB") {
+            if let Some(parent) = data_dir.parent() {
+                let legacy = parent.join("AgentHub");
+                let canonical_legacy = parent.canonicalize()?.join("AgentHub");
+                for project in &mut config.projects {
+                    if let Ok(relative) = project.root.strip_prefix(&legacy)
+                        .or_else(|_| project.root.strip_prefix(&canonical_legacy)) {
+                        project.root = security::safe_root(&data_dir.join(relative))?;
+                    }
+                }
+            }
+        }
         config.auth_epoch = id();
         db.put("config", serde_json::to_string(&config)?).await?;
         let (events, _) = broadcast::channel(512);
@@ -742,7 +754,7 @@ impl Hub {
             .root
             .clone();
         security::reject_links(&root)?;
-        let base = root.join(".agent-hub");
+        let base = security::migrate_directory(&root, ".agent-hub", ".tab")?;
         if base.exists() {
             security::reject_links(&base)?
         } else {
@@ -814,7 +826,7 @@ impl Hub {
             .ok_or_else(|| anyhow!("Проект отсутствует"))?
             .root
             .clone();
-        let out = root.join(".agent-hub/outbox");
+        let out = security::migrate_directory(&root, ".agent-hub", ".tab")?.join("outbox");
         if !out.exists() {
             return Ok(vec![]);
         }

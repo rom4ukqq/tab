@@ -140,7 +140,7 @@ pub async fn run(
     let mut serial = 100i64;
     let mut steer_pending = std::collections::HashSet::<i64>::new();
     match install.provider{
-        Provider::Codex=>process.send(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"agent_hub","version":"0.1.0"},"capabilities":{"experimentalApi":true}}})).await?,
+        Provider::Codex=>process.send(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"tab","version":"0.1.0"},"capabilities":{"experimentalApi":true}}})).await?,
         Provider::Claude=>process.send(json!({"type":"control_request","request_id":"hub-init","request":{"subtype":"initialize","hooks":null}})).await?,
         _=>{}}
     let handshake = tokio::time::Instant::now();
