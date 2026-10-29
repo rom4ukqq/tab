@@ -1,6 +1,8 @@
-Codex and Claude Code: Lobe Icons
+Codex and Claude: Lobe Icons
 https://github.com/lobehub/lobe-icons/tree/8b7bbc433d38437fa2b0cca58ae896917162b812
-packages/static-svg/icons/codex.svg and claudecode.svg
+Codex: packages/static-svg/icons/codex.svg
+Displayed Codex logo (OpenAI/ChatGPT): https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/openai.svg
+Claude: https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/claude.svg
 SVG geometry unchanged; monochrome logos rendered with CSS masks.
 MIT License
 
@@ -26,8 +28,9 @@ SOFTWARE.
 
 
 Oh My Pi:
-https://github.com/can1357/oh-my-pi/tree/b0756921ed231869ea92feef0056629a429d3fe1
-assets/icon.svg, unchanged.
+https://omp.sh/favicon.svg
+Official website favicon, unchanged, retrieved 2026-10-29.
+Project: https://github.com/can1357/oh-my-pi
 MIT License
 
 Copyright (c) 2025 Mario Zechner

@@ -43,6 +43,11 @@ h1{font-size:38px}h2{font-size:26px}.intro{padding:26px 16px 40px}.intro h2{font
 .card,.banner,.empty{background:linear-gradient(135deg,#ffffff06,transparent 65%),var(--hub-panel);border:1px solid var(--hub-border);backdrop-filter:blur(10px) saturate(150%);border-radius:18px;box-shadow:var(--glass-shadow)}
 .card{padding:25px 28px;margin-bottom:18px}.card p{color:var(--hub-muted)}.card code{color:var(--hub-muted)}
 .request{border-color:color-mix(in srgb,var(--hub-accent) 44%,transparent)}.banner.error{border-color:#d9747480}.empty{border-style:dashed}
+.shell .request>.row:last-child>.fui-Button{min-height:36px;min-width:96px;padding:7px 14px;border:1px solid var(--hub-border);border-radius:10px;background:var(--hub-input);color:var(--hub-text);font-weight:500}
+.shell .request>.row:last-child>.fui-Button:hover:not(:disabled){background:var(--hub-selected);border-color:var(--hub-accent-readable)}
+.shell .request>.row:last-child>.fui-Button:active:not(:disabled){background:color-mix(in srgb,var(--hub-accent) 12%,var(--hub-input));border-color:var(--hub-accent-readable)}
+.shell .request>.row:last-child>.fui-Button:disabled{background:var(--hub-input);border-color:var(--hub-border);color:var(--hub-muted);opacity:.5;cursor:not-allowed}
+@media(forced-colors:active){.shell .request>.row:last-child>.fui-Button{background:ButtonFace;color:ButtonText;border-color:ButtonText}.shell .request>.row:last-child>.fui-Button:hover:not(:disabled),.shell .request>.row:last-child>.fui-Button:active:not(:disabled){background:Highlight;color:HighlightText;border-color:Highlight}.shell .request>.row:last-child>.fui-Button:disabled{color:GrayText;border-color:GrayText;opacity:1}}
 .shell .fui-Input,.shell .fui-Textarea{background:var(--hub-input);border-color:var(--hub-border);border-radius:10px}.shell .fui-Button{border-radius:10px}.shell .fui-Button:not(:disabled){transition:background .18s,border-color .18s}
 .shell .fui-Input input{color:var(--hub-text)}.shell pre{background:var(--hub-input);border:1px solid var(--hub-border)}
 .form-grid{align-items:start}.form-grid>.fui-Field{align-self:start;display:flex;flex-direction:column;gap:6px}.form-grid .fui-Input{width:100%;height:40px;min-height:40px;flex-shrink:0}.form-grid .fui-Label{margin:0;padding:0;line-height:20px}

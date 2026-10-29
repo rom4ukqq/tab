@@ -2,13 +2,16 @@
 
 ## Agent icons
 
-Codex and Claude Code SVGs are from Lobe Icons, MIT, Copyright (c) 2023 LobeHub.
+Codex and Claude SVGs are from Lobe Icons, MIT, Copyright (c) 2023 LobeHub.
 Origin: https://github.com/lobehub/lobe-icons/tree/8b7bbc433d38437fa2b0cca58ae896917162b812
-Paths: `packages/static-svg/icons/codex.svg`, `packages/static-svg/icons/claudecode.svg`.
+Codex path: `packages/static-svg/icons/codex.svg`.
+Codex is displayed using the OpenAI (ChatGPT) logo: https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/openai.svg
+Claude source: https://unpkg.com/@lobehub/icons-static-svg@1.101.0/icons/claude.svg
 Geometry is unchanged; these monochrome SVGs are displayed using CSS masks.
 
-OMP uses its upstream `assets/icon.svg`, unchanged.
-Origin: https://github.com/can1357/oh-my-pi/tree/b0756921ed231869ea92feef0056629a429d3fe1
+OMP uses the official website favicon, unchanged, retrieved 2026-10-29.
+Origin: https://omp.sh/favicon.svg
+Project: https://github.com/can1357/oh-my-pi
 MIT, Copyright (c) 2025 Mario Zechner; 2025-2026 Can Bölük; 2026 Stencil Labs, Inc.
 Both full notices are shipped in `apps/desktop/public/icons/NOTICE.txt`.
 Logos identify the respective agents; no endorsement is implied.
