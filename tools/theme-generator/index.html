@@ -19,9 +19,11 @@
 <button id="reset">Сбросить параметры</button><button id="copy">Копировать настройки</button>
 <label>Название темы<input id="themeName" type="text" maxlength="80" value="Saveliev" style="width:150px"></label><button id="exportTheme" disabled>Экспорт темы (.zip)</button><p id="exportStatus" class="footer">Архив содержит ASCII-данные и настройки, без исходного видео.</p>
 <pre id="summary" style="white-space:pre-wrap;font:12px/1.6 Consolas,monospace"></pre>
-<p class="footer">Источник подготовлен заранее в сетку яркости ячеек. Браузер рисует фон и ASCII-символы; MP4 и видеодекодера здесь нет. Монтаж исходника сохранён.</p>
+<p class="footer">При импорте ролик последовательно декодируется локально. Готовая тема хранит сетку яркости ячеек и рисуется ASCII-символами, без воспроизведения видео.</p>
 <p class="footer">Алгоритм: <a href="https://github.com/collidingScopes/ascii" style="color:inherit" target="_blank" rel="noreferrer">collidingScopes/ascii</a>, MIT. Адаптация: предрасчёт кадров, циклический стык, палитра от акцента.</p>
 </aside></main>
+<script src="vendor/mediabunny-1.63.0.js"></script>
+<script src="video-import.js"></script>
 <script src="theme-data.js"></script>
 <script>
 // Rendering formulas adapted from collidingScopes/ascii (Alan Ang, MIT),
@@ -93,35 +95,29 @@ $('exportTheme').onclick=async()=>{
  const compressed=typeof CompressionStream!=='undefined',payload=compressed?new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()):data;
  const path=compressed?'frames.bin.gz':'frames.bin',manifest={format:'agent-hub-ascii-theme',version:1,name,createdAt:new Date().toISOString(),renderer:'ascii-preview-v3',data:{path,encoding:compressed?'gzip':'raw',layout:'frame-row-column-u8-luminance',sha256:digest,uncompressedBytes:data.length,columns:snapshot.columns,rows:snapshot.rows,frames:snapshot.frames,sourceFps:snapshot.sourceFps,width:snapshot.width,height:snapshot.height,loop:true,interpolation:snapshot.interpolation||'linear-blend'},settings:options,background:'#080b10',preview:'preview.png'};
  const encoder=new TextEncoder(),files=[['theme.json',encoder.encode(JSON.stringify(manifest,null,2))],[path,payload]],thumbnail=await thumbnailPromise;if(thumbnail)files.push(['preview.png',new Uint8Array(await thumbnail.arrayBuffer())]);else delete manifest.preview;
- files[0][1]=encoder.encode(JSON.stringify(manifest,null,2));files.push(['README.txt',encoder.encode('Agent Hub ASCII theme package v1\nFrame data contains luminance cells, not video.\nSHA-256 is calculated over decompressed frame bytes.\nSettings and renderer version are in theme.json.\nPreview-only export; installation into Agent Hub requires integration.\nRenderer formulas adapted from collidingScopes/ascii (Alan Ang, MIT).\nhttps://github.com/collidingScopes/ascii\n')]);
- const archive=zipArchive(files),url=URL.createObjectURL(archive),link=document.createElement('a');link.href=url;link.download=(name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,80)||'ascii-theme')+'.agent-hub-theme.zip';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('exportStatus').textContent=`Архив подготовлен · ${(archive.size/1048576).toFixed(1)} МБ. Пришли скачанный ZIP в чат.`;
+ files[0][1]=encoder.encode(JSON.stringify(manifest,null,2));files.push(['README.txt',encoder.encode('TAB ASCII theme package v1\nFrame data contains luminance cells, not video.\nSHA-256 is calculated over decompressed frame bytes.\nSettings and renderer version are in theme.json.\nTo install: TAB > Settings > Import theme.\nRenderer formulas adapted from collidingScopes/ascii (Alan Ang, MIT).\nhttps://github.com/collidingScopes/ascii\n')]);
+ const archive=zipArchive(files),url=URL.createObjectURL(archive),link=document.createElement('a');link.href=url;link.download=(name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,80)||'ascii-theme')+'.agent-hub-theme.zip';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('exportStatus').textContent=`Архив подготовлен · ${(archive.size/1048576).toFixed(1)} МБ. В TAB открой Settings → Import theme и выбери этот ZIP.`;
  }catch(e){$('exportStatus').textContent='Не удалось экспортировать: '+e.message}finally{$('exportTheme').disabled=false}
 };
-let importGeneration=0,importing=false;
+let importGeneration=0,importing=false,importController=null;
 $('upload').onclick=()=>$('videoFile').click();
 $('videoFile').onchange=()=>{const file=$('videoFile').files[0];if(file)importVideo(file);$('videoFile').value=''};
-$('cancelUpload').onclick=()=>{importGeneration++;$('uploadStatus').textContent='Отмена…'};
+$('cancelUpload').onclick=()=>{importGeneration++;importController?.abort();$('uploadStatus').textContent='Отмена…'};
 document.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()});
 document.addEventListener('drop',e=>{e.preventDefault();const file=e.dataTransfer.files[0];if(file&&window.previewReady&&!importing)importVideo(file)});
-function waitMedia(video,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('Браузер слишком долго декодирует ролик. Попробуй MP4 H.264.')),15000);function finish(error){clearTimeout(timer);video.removeEventListener(event,ok);video.removeEventListener('error',bad);error?reject(error):resolve()}function ok(){finish()}function bad(){finish(Error('Этот кодек не поддерживается браузером. Попробуй MP4 H.264 или WebM.'))}video.addEventListener(event,ok,{once:true});video.addEventListener('error',bad,{once:true});action()})}
 async function importVideo(file){
  if(importing||!window.previewReady)return;
  if(file.size>500*1024*1024){$('uploadStatus').textContent='Максимальный размер — 500 МБ';return}
- const generation=++importGeneration,video=document.createElement('video'),url=URL.createObjectURL(file);video.muted=true;video.preload='auto';video.playsInline=true;importing=true;$('upload').disabled=true;$('cancelUpload').hidden=false;
+ const generation=++importGeneration,started=performance.now();importController=new AbortController();importing=true;$('upload').disabled=true;$('cancelUpload').hidden=false;$('exportTheme').disabled=true;
+ const wasPlaying=playing;playing=false;
  try{
-  await waitMedia(video,'loadeddata',()=>{video.src=url;video.load()});
-  if(!Number.isFinite(video.duration)||video.duration<.25||video.duration>180)throw Error('Выбери ролик длительностью от 0,25 секунды до 3 минут.');
-  const fps=24,count=Math.max(2,Math.floor(video.duration*fps)),scale=Math.min(90/video.videoWidth,68/video.videoHeight),cols=Math.max(2,Math.round(video.videoWidth*scale)),rows=Math.max(2,Math.round(video.videoHeight*scale)),size=cols*rows,data=new Uint8Array(count*size),sampleCanvas=document.createElement('canvas');sampleCanvas.width=cols;sampleCanvas.height=rows;const sampleCtx=sampleCanvas.getContext('2d',{willReadFrequently:true});
-  for(let i=0;i<count;i++){
-   if(generation!==importGeneration)throw Error('Загрузка отменена. Предыдущий фон сохранён.');
-   const target=i/fps;if(Math.abs(video.currentTime-target)>.0001)await waitMedia(video,'seeked',()=>{video.currentTime=target});
-   sampleCtx.drawImage(video,0,0,cols,rows);const pixels=sampleCtx.getImageData(0,0,cols,rows).data;for(let j=0;j<size;j++)data[i*size+j]=Math.round(pixels[j*4]*.299+pixels[j*4+1]*.587+pixels[j*4+2]*.114);
-   if(i%12===0){$('uploadStatus').textContent=`${file.name} · подготовка ${Math.round(i/count*100)}%`;await new Promise(resolve=>setTimeout(resolve,0))}
-  }
+  $('uploadStatus').textContent=`${file.name} · открываем последовательный декодер…`;
+  const {data,columns:cols,rows,count,fps,width,height}=await decodeAsciiVideo(file,{signal:importController.signal,onProgress:progress=>{$('uploadStatus').textContent=`${file.name} · подготовка ${Math.round(progress*100)}% · ${((performance.now()-started)/1000).toFixed(1)} с`}});
+  const size=cols*rows;
   if(generation!==importGeneration)throw Error('Загрузка отменена. Предыдущий фон сохранён.');
   const overlap=Math.min(24,Math.floor(count/4)),loopCount=count-overlap,loop=new Uint8Array(loopCount*size);loop.set(data.subarray(overlap*size,(count-overlap)*size));for(let i=0;i<overlap;i++){const a=i/overlap;for(let j=0;j<size;j++)loop[(count-2*overlap+i)*size+j]=Math.round(data[(count-overlap+i)*size+j]*(1-a)+data[i*size+j]*a)}
-  meta={columns:cols,rows,frames:loopCount,sourceFps:fps,width:video.videoWidth,height:video.videoHeight};frames=loop;$('themeName').value=file.name.replace(/\.[^.]+$/,'');position=0;glyphTime=0;glyphKey='';lastFrame=-1;lastTime=null;draw();$('uploadStatus').textContent=`${file.name} · готово · ${cols}×${rows} · 24 кадра/с + смешивание · локально`;
- }catch(e){$('uploadStatus').textContent=e.message}finally{video.pause();video.removeAttribute('src');video.load();URL.revokeObjectURL(url);importing=false;$('upload').disabled=false;$('cancelUpload').hidden=true}
+  meta={columns:cols,rows,frames:loopCount,sourceFps:fps,width,height};frames=loop;$('themeName').value=file.name.replace(/\.[^.]+$/,'');position=0;glyphTime=0;glyphKey='';lastFrame=-1;lastTime=null;draw();$('uploadStatus').textContent=`${file.name} · готово · ${cols}×${rows} · 24 кадра/с + смешивание · ${((performance.now()-started)/1000).toFixed(1)} с · локально`;
+ }catch(e){$('uploadStatus').textContent=generation!==importGeneration?'Загрузка отменена. Предыдущий фон сохранён.':e.message}finally{importController=null;importing=false;playing=wasPlaying;lastTime=null;$('upload').disabled=false;$('cancelUpload').hidden=true;$('exportTheme').disabled=false}
 }
 sync();makePalette();
 (async()=>{meta=window.themeData.meta;const compressed=Uint8Array.from(atob(window.themeData.gzip),c=>c.charCodeAt(0));frames=new Uint8Array(await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());delete window.themeData;if(frames.length!==meta.uncompressedBytes)throw Error('Повреждён набор кадров');$('play').disabled=$('seam').disabled=$('seek').disabled=$('upload').disabled=$('exportTheme').disabled=false;window.previewReady=true;raf=requestAnimationFrame(tick)})().catch(e=>{$('clock').textContent=e.message;$('clock').className='error'});

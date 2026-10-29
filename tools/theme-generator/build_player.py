@@ -7,6 +7,7 @@ root = Path(__file__).resolve().parent
 destination = root.parents[1] / 'apps/desktop/public/themes'
 destination.mkdir(parents=True, exist_ok=True)
 html = (root / 'index.html').read_text(encoding='utf-8')
+html = html.replace('<script src="vendor/mediabunny-1.63.0.js"></script>', '').replace('<script src="video-import.js"></script>', '')
 script = re.search(r'<script>\s*([\s\S]*?)</script>', html)[1]
 script = script[:script.index('// Portable ZIP')]
 script = script.replace("localStorage.getItem('ascii-preview-settings-v3')", "null")
