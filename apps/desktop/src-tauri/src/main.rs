@@ -107,12 +107,13 @@ async fn configure_telegram(h: H<'_>, token: String, user_id: i64) -> R<()> {
 #[tauri::command]
 async fn refresh_pairing_code(h: H<'_>) -> R<()> {
     let connection = h.telegram_stop.lock().await;
-    if connection.is_none() { return Err("Connect Telegram first".into()); }
+    if connection.as_ref().is_none_or(|token| token.is_cancelled()) { return Err("Connect Telegram first".into()); }
     h.issue_pairing_code().await.map_err(err)
 }
 #[tauri::command]
 async fn connect_telegram(h: H<'_>) -> R<()> {
-    telegram::start(h.inner().clone()).await.map_err(err)
+    telegram::start(h.inner().clone()).await.map_err(err)?;
+    refresh_pairing_code(h).await
 }
 #[tauri::command]
 async fn disconnect_telegram(h: H<'_>) -> R<()> {

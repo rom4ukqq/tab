@@ -20,7 +20,7 @@ type Asset = { id: string; name: string; path: string; mime: string; bytes: numb
 type Turn = { id: string; session_id: string; state: string; text: string; created_at: number };
 type Request = { id: string; turn_id: string; session_id: string; kind: string; data: Record<string, any>; local_only: boolean; expires_at: number };
 type Event = { event_id: string; session_id: string; turn_id: string; sequence: number; kind: string; data: Record<string, any> };
-type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string; telegram_active: boolean; pairing_code?: { code: string; expires_at: number } };
+type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string; telegram_active: boolean; telegram_authorized: boolean; pairing_code?: { code: string; expires_at: number } };
 const pages = ['Агенты', 'Telegram', 'Настройки'];
 const active = (t: Turn) => ['running', 'queued', 'dispatching'].includes(t.state);
 const names: Record<string, string> = { running: 'В работе', queued: 'В очереди', completed: 'Завершено', cancelled: 'Отменено', interrupted: 'Прервано', failed: 'Ошибка', unknown: 'Результат неизвестен' };
@@ -93,6 +93,7 @@ function App() {
     return () => { disposed = true; clean.forEach(f => f()); clearInterval(timer); };
   }, [refresh]);
   const accentPalette = accentColors(accent, dark);
+  const telegramConnected = !!snap?.telegram_active && (!!snap.pairing_code || snap.telegram_authorized);
   const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: accent, colorBrandBackgroundHover: accentPalette.hover, colorBrandBackgroundPressed: accentPalette.pressed, colorNeutralForegroundOnBrand: accentPalette.text, colorBrandForeground1: accentPalette.foreground, colorBrandStroke1: accent, colorCompoundBrandBackground: accent, colorCompoundBrandBackgroundHover: accentPalette.hover, colorCompoundBrandBackgroundPressed: accentPalette.pressed, colorCompoundBrandStroke: accent, colorCompoundBrandStrokeHover: accentPalette.hover, colorCompoundBrandStrokePressed: accentPalette.pressed, borderRadiusMedium: '8px' };
   return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'} style={{ '--hub-accent': accent, '--hub-accent-readable': accentPalette.foreground } as React.CSSProperties}>
     <ThemeBackdrop selected={background} animate={animateBackground} onError={setError}/>
@@ -115,9 +116,9 @@ function App() {
         </>}
         {page === 'Telegram' && <>
           <div className="card">
-            <div className="row"><h2 className="grow">{t("Подключение бота")}</h2><Button appearance={snap.telegram_active ? 'secondary' : 'primary'} disabled={busy || (!snap.telegram_active && !snap.config.telegram_user) || snap.telegram_status === 'Отключается'} onClick={() => command(snap.telegram_active ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? t("Отключение…") : snap.telegram_active ? t("Отключить") : t("Подключить")}</Button></div>
-            {snap.telegram_active && <div className="pairing-code">
-              {snap.pairing_code ? <><span>{t('Отправьте этот PIN боту в Telegram')}</span><strong>{snap.pairing_code.code}</strong><span className="muted">{t('Одноразовый код · до')}{' '}{new Date(snap.pairing_code.expires_at * 1000).toLocaleTimeString(language)}</span></> : <span className="muted">{t('Для нового подтверждения получите PIN и отправьте его боту.')}</span>}
+            <div className="row"><h2 className="grow">{t("Подключение бота")}</h2><Button appearance={telegramConnected ? 'secondary' : 'primary'} disabled={busy || !snap.config.telegram_user || snap.telegram_status === 'Отключается'} onClick={() => command(telegramConnected ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? t("Отключение…") : telegramConnected ? t("Отключить") : t("Подключить")}</Button></div>
+            {snap.telegram_active && snap.pairing_code && <div className="pairing-code">
+              <span>{t('Отправьте этот PIN боту в Telegram')}</span><strong>{snap.pairing_code.code}</strong><span className="muted">{t('Одноразовый код · до')}{' '}{new Date(snap.pairing_code.expires_at * 1000).toLocaleTimeString(language)}</span>
               <Button appearance="subtle" disabled={busy || snap.telegram_status === 'Отключается'} onClick={() => command('refresh_pairing_code')}>{t('Новый PIN')}</Button>
             </div>}
             <p>{t("Используйте отдельного бота из BotFather. Одновременно с TAB у него не должно быть другого Telegram-моста.")}</p>

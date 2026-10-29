@@ -187,7 +187,6 @@ pub async fn start(hub: Arc<Hub>) -> Result<()> {
         .ok_or_else(|| anyhow!("Сначала настройте Telegram"))?;
     let client = Client::new(token);
     hub.revoke().await?;
-    hub.issue_pairing_code().await?;
     hub.db.put("telegram_autoconnect", "true".into()).await?;
     let cancel = CancellationToken::new();
     *stop = Some(cancel.clone());
@@ -276,6 +275,33 @@ fn clip(s: &str, max: usize) -> String {
 fn session_buttons(sid: &str) -> Vec<Vec<Value>> {
     vec![vec![button("Остановить задачу", format!("t:{sid}")), button("Закончить сессию", format!("e:{sid}"))],
         vec![button("Мои диалоги", "sessions".into())]]
+}
+async fn session_intro(hub: &Hub, chat: i64, session: &Session, resumed: bool) -> Result<()> {
+    let text = {
+        let config = hub.config.read().await;
+        let installation = config.installations.iter().find(|i| i.provider == session.provider);
+        let project = config.projects.iter().find(|p| p.id == session.project_id);
+        let agent = match session.provider {
+            Provider::Codex => "OpenAI Codex",
+            Provider::Claude => "Claude Code",
+            Provider::Omp => "Oh My Pi",
+            Provider::Mock => "Mock",
+        };
+        let version = installation.map(|i| i.version.as_str()).filter(|v| !v.trim().is_empty()).unwrap_or("не определена");
+        let directory = project.map(|p| p.root.display().to_string()).unwrap_or_else(|| "недоступна".into());
+        let model = session.model.as_deref().unwrap_or("по настройкам CLI (определится при запуске)");
+        let permissions = match session.provider {
+            Provider::Codex => "Sandbox: workspace-write\nПодтверждения: on-request",
+            Provider::Claude => "Подтверждения: manual\nOS sandbox: отсутствует",
+            Provider::Omp => "Подтверждения: always-ask (локально на ПК)\nOS sandbox: не подтверждён",
+            Provider::Mock => "Тестовый агент: команды не выполняются",
+        };
+        format!(
+            "{agent} · {}\nВерсия CLI: {version}\nМодель: {model}\nРабочая папка: {directory}\n{permissions}\n\nCLI запустится при отправке задачи.\nНапишите задачу или прикрепите файлы.\n/stop — остановить задачу\n/sessions — выбрать диалог\n/help — справка",
+            if resumed { "диалог продолжен" } else { "новая сессия" },
+        )
+    };
+    say(hub, chat, &text, session_buttons(&session.id)).await
 }
 async fn stop_session(hub: &Hub, chat: i64, user: i64, sid: &str, end: bool) -> Result<bool> {
     let sid = sid.to_string();
@@ -462,7 +488,7 @@ async fn handle(
         return say(hub, chat, "Доступ закрыт.", vec![]).await;
     }
     if !hub.authorized(user, true).await? {
-        return say(hub,chat,&format!("{} · откройте TAB → Telegram на ПК и отправьте сюда показанный шестизначный PIN. Код одноразовый и действует 5 минут.",c.machine_name),vec![]).await;
+        return say(hub,chat,&format!("{} · откройте TAB → Telegram на ПК, нажмите Connect и отправьте сюда показанный шестизначный PIN. Код одноразовый и действует 5 минут.",c.machine_name),vec![]).await;
     }
     if cb.is_object() {
         let data = cb["data"].as_str().unwrap_or("");
@@ -495,7 +521,7 @@ async fn handle(
             let p: Provider = serde_json::from_value(json!(p))?;
             let s = hub.create_agent_session(p).await?;
             set_session(hub, chat, &s.id).await?;
-            return say(hub, chat, &format!("{} · диалог открыт\nСледующее сообщение получит агент. Отправьте задачу.", s.provider.key()), session_buttons(&s.id)).await;
+            return session_intro(hub, chat, &s, false).await;
         }
         if data.starts_with("j:") {
             return say(hub, chat, "Выбор проекта больше не нужен. Создайте сессию и выберите агента.", vec![vec![button("Новая сессия", "new".into())]]).await;
@@ -503,7 +529,7 @@ async fn handle(
         if let Some(sid) = data.strip_prefix("s:") {
             let s = hub.session(sid).await?;
             set_session(hub, chat, sid).await?;
-            return say(hub, chat, &format!("{} · диалог продолжен\nСледующее сообщение получит агент.", s.provider.key()), session_buttons(sid)).await;
+            return session_intro(hub, chat, &s, true).await;
         }
         if let Some(rid) = data.strip_prefix("a:") {
             return hub

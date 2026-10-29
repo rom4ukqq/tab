@@ -152,6 +152,7 @@ pub struct Snapshot {
     pub requests: Vec<Interaction>,
     pub telegram_status: String,
     pub telegram_active: bool,
+    pub telegram_authorized: bool,
     pub pairing_code: Option<PairingCode>,
 }
 #[derive(Clone, Debug)]

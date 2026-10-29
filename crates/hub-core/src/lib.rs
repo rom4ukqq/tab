@@ -103,6 +103,7 @@ impl Hub {
                 Ok((sessions, turns, requests))
             })
             .await?;
+        let telegram_authorized = match config.telegram_user { Some(user) => self.authorized(user, false).await?, None => false };
         Ok(Snapshot {
             config,
             sessions,
@@ -110,6 +111,7 @@ impl Hub {
             requests,
             telegram_status: self.telegram_status.read().await.clone(),
             telegram_active: self.telegram_stop.lock().await.is_some(),
+            telegram_authorized,
             pairing_code: self.pairing_snapshot().await,
         })
     }
@@ -871,6 +873,24 @@ struct AbortTask(tokio::task::AbortHandle);
 #[cfg(test)]
 mod pairing_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn pairing_snapshot_stays_hidden_until_explicit_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = Hub::open(dir.path().join("data")).await.unwrap();
+        hub.config.write().await.telegram_user = Some(42);
+        *hub.telegram_stop.lock().await = Some(CancellationToken::new());
+        let initial = hub.snapshot().await.unwrap();
+        assert!(initial.telegram_active);
+        assert!(!initial.telegram_authorized);
+        assert!(initial.pairing_code.is_none());
+        hub.issue_pairing_code().await.unwrap();
+        let code = hub.snapshot().await.unwrap().pairing_code.unwrap().code;
+        assert!(hub.unlock(42, &code, now()).await.unwrap());
+        let paired = hub.snapshot().await.unwrap();
+        assert!(paired.telegram_authorized);
+        assert!(paired.pairing_code.is_none());
+    }
 
     async fn configured(path: PathBuf) -> Arc<Hub> {
         let hub = Hub::open(path).await.unwrap();
