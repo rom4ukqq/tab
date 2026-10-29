@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 export type Language = 'en' | 'ru';
 const strings: Record<string, string> = {
+  'Импорт темы':'Import theme', 'Импорт…':'Importing…', 'Тема импортирована.':'Theme imported.', 'ZIP из TAB Theme Generator':'ZIP from TAB Theme Generator',
+  'Некорректный архив темы. Экспортируйте его из TAB Theme Generator.':'Invalid theme archive. Export it from TAB Theme Generator.',
+  'Архив темы превышает 64 МиБ.':'Theme archive exceeds 64 MiB.',
+  'Контрольная сумма темы не совпала. Экспортируйте тему заново.':'Theme checksum mismatch. Export the theme again.',
+  'Достигнут лимит хранилища тем (16 тем / 256 МиБ).':'Theme storage limit reached (16 themes / 256 MiB).',
   'Агенты':'Agents', 'Настройки':'Settings', 'Основная навигация':'Main navigation', 'Этот компьютер':'This computer', 'Запуск…':'Starting…', 'Активных задач:':'Active tasks:', 'Закрыть':'Close',
   'Открываем локальную базу…':'Opening local database…', 'Подключите ваши CLI-агенты':'Connect your CLI agents', 'Отметьте агентов, к которым будет доступ через Telegram.':'Select the agents you want to access through Telegram.',
   'Агенты на этом компьютере':'Agents on this computer', 'Найти агенты':'Find agents', 'Агенты ещё не найдены':'No agents found yet', 'Установите и авторизуйте Codex, Claude Code или OMP, затем нажмите «Найти агенты».':'Install and sign in to Codex, Claude Code or OMP, then click “Find agents”.',

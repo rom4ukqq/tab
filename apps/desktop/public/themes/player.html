@@ -19,7 +19,9 @@ header,aside,.controls,.hint,#seek{display:none!important}html,body,main,.stage{
 <button id="reset">Сбросить параметры</button><button id="copy">Копировать настройки</button>
 <label>Название темы<input id="themeName" type="text" maxlength="80" value="Saveliev" style="width:150px"></label><button id="exportTheme" disabled>Экспорт темы (.zip)</button><p id="exportStatus" class="footer">Архив содержит ASCII-данные и настройки, без исходного видео.</p>
 <pre id="summary" style="white-space:pre-wrap;font:12px/1.6 Consolas,monospace"></pre>
-<p class="footer">Источник подготовлен заранее в сетку яркости ячеек. Браузер рисует фон и ASCII-символы; MP4 и видеодекодера здесь нет. Монтаж исходника сохранён.</p>
+<p class="footer">При импорте ролик последовательно декодируется локально. Готовая тема хранит сетку яркости ячеек и рисуется ASCII-символами, без воспроизведения видео.</p>
 <p class="footer">Алгоритм: <a href="https://github.com/collidingScopes/ascii" style="color:inherit" target="_blank" rel="noreferrer">collidingScopes/ascii</a>, MIT. Адаптация: предрасчёт кадров, циклический стык, палитра от акцента.</p>
 </aside></main>
+
+
 <script src="player.js"></script></html>

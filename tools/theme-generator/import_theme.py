@@ -26,7 +26,7 @@ with zipfile.ZipFile(archive) as z:
         raw = stream.read(data['uncompressedBytes'] + 1)
     assert len(raw) == data['uncompressedBytes'] == data['columns'] * data['rows'] * data['frames']
     assert hashlib.sha256(raw).hexdigest() == data['sha256']
-    destination = Path(__file__).resolve().parents[2] / 'apps/desktop/public/themes' / theme_id
+    destination = Path(__file__).resolve().parents[2] / 'assets/themes' / theme_id
     destination.mkdir(parents=True, exist_ok=True)
     (destination / 'theme.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     (destination / 'frames.bin.gz').write_bytes(payload)

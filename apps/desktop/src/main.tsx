@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -6,7 +6,8 @@ import { FluentProvider, webDarkTheme, webLightTheme, Button, Input, Switch, Fie
 import './style.css';
 import './bridge.css';
 import './glass.css';
-import { ThemeBackdrop, backgroundThemes, validBackground, BackgroundTheme } from './ThemeBackdrop';
+import { ThemeBackdrop, BackgroundTheme } from './ThemeBackdrop';
+import { importTheme, listThemes, ThemeInfo } from './themeStore';
 import { AgentIcon, agentNames } from './AgentIcon';
 import { AccentPicker, accentColors, defaultAccent, validAccent } from './AccentPicker';
 import { LanguageProvider, useLanguage, useT } from './i18n';
@@ -38,7 +39,22 @@ function App() {
   useEffect(() => { localStorage.setItem('agent-hub-accent', accent); }, [accent]);
   useEffect(() => { invoke('set_window_theme', { dark }).catch(e => setError(String(e))); }, [dark]);
   const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('agent-hub-matrix-motion') !== 'off');
-  const [background, setBackground] = useState<BackgroundTheme>(() => { const saved = localStorage.getItem('agent-hub-background'); return validBackground(saved) && saved !== 'pr0n' ? saved : 'matrix'; });
+  const [background, setBackground] = useState<BackgroundTheme>('matrix');
+  const [importedThemes, setImportedThemes] = useState<ThemeInfo[]>([]), [importingTheme, setImportingTheme] = useState(false);
+  const themeFile = useRef<HTMLInputElement>(null);
+  const savedBackground = useRef(localStorage.getItem('agent-hub-background'));
+  const backgroundThemes = [{ id: 'matrix', name: t('Матрица') }, ...importedThemes];
+  useEffect(() => {
+    let disposed = false;
+    listThemes().then(themes => { if (!disposed) { setImportedThemes(themes); if (themes.some(theme => theme.id === savedBackground.current)) setBackground(savedBackground.current!); } }).catch(e => { if (!disposed) setError(String(e)); });
+    return () => { disposed = true; };
+  }, []);
+  const addTheme = async (file: File) => {
+    setImportingTheme(true); setError('');
+    try { const theme = await importTheme(file); setImportedThemes(await listThemes()); setBackground(theme.id); setNotice(t('Тема импортирована.')); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setImportingTheme(false); }
+  };
   const [developer, setDeveloper] = useState(false);
   const [trayIcon, setTrayIcon] = useState<'star' | 'face'>(() => localStorage.getItem('tab-tray-icon') === 'face' ? 'face' : 'star');
   useEffect(() => { invoke('set_tray_icon', { kind: trayIcon }).then(() => localStorage.setItem('tab-tray-icon', trayIcon)).catch(e => setError(String(e))); }, [trayIcon]);
@@ -121,14 +137,14 @@ function App() {
             <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label={t("Запускать в трее при входе в Windows")}/></div>
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label={t("Тёмная тема")}/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
-            <Field label={t("Фон")}><Dropdown aria-label={t("Фон")} className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={background === 'pr0n' ? 'Developer theme' : t(backgroundThemes.find(item => item.id === background)?.name ?? '')} selectedOptions={[background]} onOptionSelect={(_, d) => { if (validBackground(d.optionValue ?? null) && d.optionValue !== 'pr0n') setBackground(d.optionValue as BackgroundTheme); }}>{backgroundThemes.filter(t => t.id !== 'pr0n').map(item => <Option key={item.id} value={item.id}>{t(item.name)}</Option>)}</Dropdown></Field>
+            <Field label={t("Фон")}><Dropdown aria-label={t("Фон")} className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={backgroundThemes.find(item => item.id === background)?.name ?? t('Матрица')} selectedOptions={[background]} onOptionSelect={(_, d) => { if (backgroundThemes.some(item => item.id === d.optionValue)) setBackground(d.optionValue!); }}>{backgroundThemes.map(item => <Option key={item.id} value={item.id}>{item.name}</Option>)}</Dropdown></Field>
+            <div className="row"><Button disabled={importingTheme} onClick={() => themeFile.current?.click()}>{t(importingTheme ? 'Импорт…' : 'Импорт темы')}</Button><input ref={themeFile} type="file" accept=".zip,.agent-hub-theme.zip" hidden onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (file && !importingTheme) void addTheme(file); }}/><span className="muted">{t('ZIP из TAB Theme Generator')}</span></div>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label={t("Анимация фона")}/></div>
             <p className="muted">{t("Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.")}</p>
           </div>
           {developer && <div className="card"><h2>Developer Settings</h2>
             <Field label={t("Иконка трея")}><select value={trayIcon} onChange={e => { const value = e.target.value; if (value === 'star' || value === 'face') setTrayIcon(value); }}><option value="star">*</option><option value="face">:3</option></select></Field>
-            <Field label={t("Секретные фоны")}><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value)) setBackground(value); }}>{backgroundThemes.map(item => <option key={item.id} value={item.id}>{t(item.name)}</option>)}</select></Field>
-            <Button onClick={() => { setDeveloper(false); if (background === 'pr0n') setBackground('matrix'); }}>{t("Скрыть Developer Settings")}</Button>
+            <Button onClick={() => setDeveloper(false)}>{t("Скрыть Developer Settings")}</Button>
           </div>}
           <details className="card"><summary>{t("Безопасность и журнал")}</summary><p>{t("Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.")}</p>
             <div className="row"><Button onClick={() => command('revoke_access')}>{t("Отозвать доступ")}</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>{t("Показать аудит")}</Button></div>

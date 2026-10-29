@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MatrixBackdrop } from './CanvasMatrix';
+import { loadTheme, validThemeId } from './themeStore';
 
-export const backgroundThemes = [{ id: 'matrix', name: 'Матрица' }, { id: 'saveli', name: 'Saveli' }, { id: 'pr0n', name: 'pr0n' }] as const;
-export type BackgroundTheme = typeof backgroundThemes[number]['id'];
-export function validBackground(value: string | null): value is BackgroundTheme { return backgroundThemes.some(t => t.id === value); }
+export type BackgroundTheme = string;
+export function validBackground(value: string | null): value is BackgroundTheme { return value === 'matrix' || validThemeId(value); }
 
 export function ThemeBackdrop({ selected, animate, onError }: { selected: BackgroundTheme; animate: boolean; onError: (error: string) => void }) {
   const [shown, setShown] = useState<BackgroundTheme>('matrix');
@@ -30,8 +30,16 @@ export function ThemeBackdrop({ selected, animate, onError }: { selected: Backgr
     return () => window.removeEventListener('message', receive);
   }, [onError]);
   useEffect(() => { frames.current.forEach(f => f.contentWindow?.postMessage({ type: 'motion', enabled: animate }, location.origin)); }, [animate, layers, shown]);
+  const deliver = async (id: string) => {
+    const frame = frames.current.get(id);
+    try {
+      const payload = await loadTheme(id);
+      if (frames.current.get(id) !== frame || pending.current !== id) return;
+      frame?.contentWindow?.postMessage({ type: 'themeData', theme: id, ...payload, enabled: animate }, location.origin, [payload.frames]);
+    } catch { if (pending.current === id) onError('Не удалось загрузить фон. Предыдущая тема сохранена.'); }
+  };
   return <div className="theme-background" aria-hidden="true">
     <div className="theme-layer" style={{ opacity: shown === 'matrix' ? 1 : 0 }}><MatrixBackdrop animate={animate && shown === 'matrix'}/></div>
-    {layers.map(id => <iframe key={id} ref={element => { if (element) frames.current.set(id, element); else frames.current.delete(id); }} className="theme-layer" title={`${id} ASCII background`} tabIndex={-1} src={`/themes/player.html?theme=${id}`} style={{ opacity: shown === id ? 1 : 0 }} onLoad={() => frames.current.get(id)?.contentWindow?.postMessage({ type: 'motion', enabled: animate }, location.origin)}/>) }
+    {layers.map(id => <iframe key={id} ref={element => { if (element) frames.current.set(id, element); else frames.current.delete(id); }} className="theme-layer" title="Imported ASCII background" tabIndex={-1} src={`/themes/player.html?theme=${encodeURIComponent(id)}`} style={{ opacity: shown === id ? 1 : 0 }} onLoad={() => void deliver(id)}/>) }
   </div>;
 }
