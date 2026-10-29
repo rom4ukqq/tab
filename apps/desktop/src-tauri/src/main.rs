@@ -195,8 +195,9 @@ fn main() {
             let stop = MenuItem::with_id(app, "stop", "Остановить все задачи", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &stop, &quit])?;
-            let icon = app.default_window_icon().cloned()
-                .ok_or_else(|| std::io::Error::other("Missing bundled app icon"))?;
+            let icon = tauri::image::Image::new_owned(
+                include_bytes!("../icons/tray-face.rgba").to_vec(), 32, 32,
+            );
             tauri::tray::TrayIconBuilder::new()
                 .icon(icon)
                 .tooltip("Agent Hub")
