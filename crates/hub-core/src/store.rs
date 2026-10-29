@@ -14,7 +14,7 @@ impl Store {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version > 1 {
             return Err(anyhow!(
-                "База создана более новой версией Agent Hub; downgrade запрещён"
+                "База создана более новой версией TAB; downgrade запрещён"
             ));
         }
         conn.execute_batch(include_str!("../migrations/001.sql"))?;

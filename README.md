@@ -1,4 +1,7 @@
-# Agent Hub
+# TAB — Telegram Agents Bridge
+
+Ранее Agent Hub. Текущая разработческая поставка — portable `target/release/TAB.exe`.
+Идентификатор приложения, ключи настроек и `%LOCALAPPDATA%\AgentHub` сохранены для совместимости с существующей базой и секретами. Формат `.agent-hub-theme.zip` также сохранён.
 
 Локальный Windows-мост между установленными CLI-агентами и личным Telegram-чатом. Rust/Tokio Core, SQLite, Tauri 2, React/TypeScript и Fluent UI 9.
 

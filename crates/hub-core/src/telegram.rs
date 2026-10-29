@@ -324,7 +324,7 @@ async fn sessions(hub: &Hub, chat: i64) -> Result<()> {
     say(
         hub,
         chat,
-        "Agent Hub · выберите диалог или создайте новый.",
+        "TAB · выберите диалог или создайте новый.",
         buttons,
     )
     .await
@@ -468,13 +468,13 @@ async fn handle(
         if let Some(sid) = data.strip_prefix("e:").or_else(|| data.strip_prefix("t:")) {
             let end = data.starts_with("e:");
             if !stop_session(hub, chat, user, sid, end).await? {
-                return say(hub, chat, "Agent Hub · эта карточка относится к другому или уже закрытому диалогу.", vec![vec![button("Мои диалоги", "sessions".into())]]).await;
+                return say(hub, chat, "TAB · эта карточка относится к другому или уже закрытому диалогу.", vec![vec![button("Мои диалоги", "sessions".into())]]).await;
             }
             if end {
                 if drafts.get(&chat).is_some_and(|d| d.0 == sid) { drafts.remove(&chat); }
-                return say(hub, chat, "Agent Hub · сессия закончена, остановка её задач запрошена. История сохранена; продолжить можно в «Мои диалоги».", vec![vec![button("Мои диалоги", "sessions".into()), button("Новая сессия", "new".into())]]).await;
+                return say(hub, chat, "TAB · сессия закончена, остановка её задач запрошена. История сохранена; продолжить можно в «Мои диалоги».", vec![vec![button("Мои диалоги", "sessions".into()), button("Новая сессия", "new".into())]]).await;
             }
-            return say(hub, chat, "Agent Hub · остановка задачи запрошена. Диалог остаётся открытым.", session_buttons(sid)).await;
+            return say(hub, chat, "TAB · остановка задачи запрошена. Диалог остаётся открытым.", session_buttons(sid)).await;
         }
         if data == "new" {
             return say(

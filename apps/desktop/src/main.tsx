@@ -64,12 +64,12 @@ function App() {
   return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'} style={{ '--hub-accent': accent, '--hub-accent-readable': accentPalette.foreground } as React.CSSProperties}>
     <ThemeBackdrop selected={background} animate={animateBackground} onError={setError}/>
     <aside>
-      <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub</div></div>
+      <div className="brand" title="Telegram Agents Bridge"><span className="brand-mark" aria-hidden="true"/><div>TAB</div></div>
       <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>
       <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? 'Этот компьютер'}<small>{snap?.telegram_status ?? 'Запуск…'}</small><small>Активных задач: {snap?.turns.filter(active).length ?? 0}</small></div>
     </aside>
     <main>
-      <header><div><div className="eyebrow">Agent Hub / {page}</div><h1>{page}</h1></div></header>
+      <header><div><div className="eyebrow">TAB / {page}</div><h1>{page}</h1></div></header>
       {error && <div className="banner error" role="alert">{error}<Button appearance="subtle" onClick={() => setError('')}>Закрыть</Button></div>}
       {notice && <div className="banner" role="status">{notice}</div>}
       {!snap ? <Spinner label="Открываем локальную базу…"/> : <>
@@ -83,7 +83,7 @@ function App() {
         {page === 'Telegram' && <>
           <div className="card">
             <div className="row"><h2 className="grow">Подключение бота</h2><Badge appearance="tint">{snap.telegram_status}</Badge></div>
-            <p>Используйте отдельного бота из BotFather. Одновременно с Agent Hub у него не должно быть другого Telegram-моста.</p>
+            <p>Используйте отдельного бота из BotFather. Одновременно с TAB у него не должно быть другого Telegram-моста.</p>
             <div className="form-grid">
               <Field label="Bot token"><Input type="password" autoComplete="off" value={token} onChange={(_, d) => setToken(d.value)}/></Field>
               <Field label="Ваш числовой Telegram ID" hint="Узнать свой ID: откройте @userinfobot в Telegram и нажмите Start. Скопируйте число из строки Id." validationState={user && userIdError ? 'error' : 'none'} validationMessage={user ? userIdError : undefined}><Input inputMode="numeric" value={user} placeholder="Например, 123456789" onChange={(_, d) => setUser(d.value)}/></Field>
@@ -100,7 +100,7 @@ function App() {
             <h2>Управление с телефона</h2>
             <div className="row"><Button appearance="primary" disabled={busy || !snap.config.pin_hash} onClick={() => command('connect_telegram')}>Подключить</Button><Button onClick={() => command('disconnect_telegram')}>Отключить</Button><Button onClick={() => command('revoke_access')}>Закрыть доступ</Button></div>
             <p>Откройте бота: <strong>/start → PIN → агент → задача</strong>. Проект и нужные папки обсудите с агентом прямо в чате.</p>
-            <p className="muted">Бот автоматически подключается при запуске Hub, без сообщения в личку. «Отключить» выключает автоподключение до следующего нажатия «Подключить».</p>
+            <p className="muted">Бот автоматически подключается при запуске TAB, без сообщения в личку. «Отключить» выключает автоподключение до следующего нажатия «Подключить».</p>
             <p className="muted">Доступ закрывается после 15 минут бездействия, через 8 часов или при перезапуске Hub. Подключение бота сохраняется, PIN-доступ нужно открыть заново.</p>
           </div>
           <p className="muted">Telegram cloud chat не использует E2EE. PIN удаляется из чата по возможности; это дополнительный барьер доступа.</p>
@@ -112,13 +112,13 @@ function App() {
             <AccentPicker value={accent} onChange={setAccent}/>
             <Field label="Фон"><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value)) setBackground(value); }}>{backgroundThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация фона"/></div>
-            <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает Hub и его задачи.</p>
+            <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.</p>
           </div>
           <details className="card"><summary>Безопасность и журнал</summary><p>Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.</p>
             <div className="row"><Button onClick={() => command('revoke_access')}>Отозвать доступ</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>Показать аудит</Button></div>
             {audit.map((a, i) => <div className="audit" key={i}><time>{new Date(a.at * 1000).toLocaleString()}</time><strong>{a.action}</strong><code>{a.target}</code></div>)}
           </details>
-          <details className="card"><summary>О сборке</summary><p>Agent Hub 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.</p><p>Данные: %LOCALAPPDATA%\AgentHub. Multi-PC, голос, Computer Use и подписанные обновления пока не включены.</p></details>
+          <details className="card"><summary>О сборке</summary><p>TAB — Telegram Agents Bridge 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.</p><p>Данные: %LOCALAPPDATA%\AgentHub (сохранены при переименовании). Multi-PC, голос, Computer Use и подписанные обновления пока не включены.</p></details>
         </>}
       </>}
     </main>

@@ -1,9 +1,9 @@
-# Agent Hub Theme Generator
+# TAB Theme Generator
 
-Откройте `index.html` в актуальном Edge или Chrome. Сервер, Python и Agent Hub для запуска не нужны. `index.html` и `theme-data.js` должны находиться рядом.
+Откройте `index.html` в актуальном Edge или Chrome. Сервер, Python и TAB для запуска не нужны. `index.html` и `theme-data.js` должны находиться рядом.
 
 Выберите видео, настройте ASCII и нажмите «Экспорт темы (.zip)». Обработка локальная. Архив содержит данные ячеек, настройки, SHA-256 и превью; исходное видео не включается.
 
-Генератор поставляется отдельно в папке `theme-generator` внутри каталога установки Agent Hub.
+Генератор поставляется отдельно в папке `theme-generator` рядом с TAB.
 
 Разработка: после изменения `frames.json` или `frames.bin.gz` выполните `python pack_data.py`. При обычном использовании Python не нужен.

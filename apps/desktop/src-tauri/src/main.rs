@@ -191,7 +191,7 @@ fn main() {
                 }
             });
             use tauri::menu::{Menu, MenuItem};
-            let open = MenuItem::with_id(app, "open", "Открыть Agent Hub", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Открыть TAB", true, None::<&str>)?;
             let stop = MenuItem::with_id(app, "stop", "Остановить все задачи", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &stop, &quit])?;
@@ -200,7 +200,7 @@ fn main() {
             );
             tauri::tray::TrayIconBuilder::new()
                 .icon(icon)
-                .tooltip("Agent Hub")
+                .tooltip("TAB - Telegram Agents Bridge")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => {
@@ -267,5 +267,5 @@ fn main() {
             get_autostart
         ])
         .run(tauri::generate_context!())
-        .expect("Agent Hub failed to start");
+        .expect("TAB failed to start");
 }
