@@ -9,7 +9,6 @@ import './glass.css';
 import { MatrixBackdrop } from './WindowChrome';
 import { AgentIcon, agentNames } from './AgentIcon';
 import { AccentPicker, accentColors, defaultAccent, validAccent } from './AccentPicker';
-import { BackgroundPicker, validBackground, type Background } from './BackgroundPicker';
 
 type Provider = 'codex' | 'claude' | 'omp' | 'mock';
 type Agent = { provider: Provider; executable: string; version: string; enabled: boolean; accept_unsandboxed: boolean };
@@ -36,8 +35,6 @@ function App() {
   useEffect(() => { invoke('set_window_theme', { dark }).catch(e => setError(String(e))); }, [dark]);
   const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('agent-hub-matrix-motion') !== 'off');
   useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
-  const [background, setBackground] = useState<Background>(() => { const saved = localStorage.getItem('agent-hub-background'); return validBackground(saved) ? saved : 'matrix'; });
-  useEffect(() => { localStorage.setItem('agent-hub-background', background); }, [background]);
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
   const numericUser = user.trim();
   const userIdError = !numericUser ? 'Введите ваш числовой Telegram ID.' :
@@ -63,7 +60,7 @@ function App() {
   const accentPalette = accentColors(accent, dark);
   const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: accent, colorBrandBackgroundHover: accentPalette.hover, colorBrandBackgroundPressed: accentPalette.pressed, colorNeutralForegroundOnBrand: accentPalette.text, colorBrandForeground1: accentPalette.foreground, colorBrandStroke1: accent, colorCompoundBrandBackground: accent, colorCompoundBrandBackgroundHover: accentPalette.hover, colorCompoundBrandBackgroundPressed: accentPalette.pressed, colorCompoundBrandStroke: accent, colorCompoundBrandStrokeHover: accentPalette.hover, colorCompoundBrandStrokePressed: accentPalette.pressed, borderRadiusMedium: '8px' };
   return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'} style={{ '--hub-accent': accent, '--hub-accent-readable': accentPalette.foreground } as React.CSSProperties}>
-    <MatrixBackdrop animate={animateBackground} theme={background}/>
+    <MatrixBackdrop animate={animateBackground}/>
     <aside>
       <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub</div></div>
       <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>
@@ -111,8 +108,7 @@ function App() {
             <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label="Запускать в трее при входе в Windows"/></div>
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label="Тёмная тема"/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
-            <BackgroundPicker value={background} onChange={setBackground}/>
-            <div className="setting"><Switch checked={animateBackground} disabled={background === 'none'} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация ASCII-фона"/></div>
+            <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация матрицы"/></div>
             <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает Hub и его задачи.</p>
           </div>
           <details className="card"><summary>Безопасность и журнал</summary><p>Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.</p>

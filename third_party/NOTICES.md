@@ -1,15 +1,17 @@
 # Third-party provenance
 
-## Offline ASCII theme preparation
+## Agent icons
 
-`scripts/ascii-themes.mjs` adapts the character ramp and luminance mapping from
-`collidingScopes/ascii`, `ASCII.js`, commit `af6b92f7c48e2b46f7f29d18ba8409a0f93900ff`.
-Origin: https://github.com/collidingScopes/ascii/tree/af6b92f7c48e2b46f7f29d18ba8409a0f93900ff
-Copyright (c) 2024 Alan Ang, MIT; full notice: `notices/ascii-LICENSE.txt`.
-Changes: deterministic original procedural grayscale scenes, offline SVG export,
-no video input, webcam, canvas rendering, third-party media, dat.gui or muxer.
-Only ready-made SVG artwork is shipped in the desktop frontend; the conversion
-script is a development tool. Runtime motion is a CSS transform of the exported image.
+Codex and Claude Code SVGs are from Lobe Icons, MIT, Copyright (c) 2023 LobeHub.
+Origin: https://github.com/lobehub/lobe-icons/tree/8b7bbc433d38437fa2b0cca58ae896917162b812
+Paths: `packages/static-svg/icons/codex.svg`, `packages/static-svg/icons/claudecode.svg`.
+Geometry is unchanged; these monochrome SVGs are displayed using CSS masks.
+
+OMP uses its upstream `assets/icon.svg`, unchanged.
+Origin: https://github.com/can1357/oh-my-pi/tree/b0756921ed231869ea92feef0056629a429d3fe1
+MIT, Copyright (c) 2025 Mario Zechner; 2025-2026 Can Bölük; 2026 Stencil Labs, Inc.
+Both full notices are shipped in `apps/desktop/public/icons/NOTICE.txt`.
+Logos identify the respective agents; no endorsement is implied.
 
 ## Agent runtime
 
