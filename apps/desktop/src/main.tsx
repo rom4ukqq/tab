@@ -33,6 +33,7 @@ function App() {
   useEffect(() => { invoke('set_ui_language', { language }).catch(e => setError(String(e))); }, [language]);
   const [page, setPage] = useState('Агенты'), [snap, setSnap] = useState<Snapshot>();
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(timer); }, [notice]);
   const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
   useEffect(() => { localStorage.setItem('agent-hub-theme', dark ? 'dark' : 'light'); }, [dark]);
   const [accent, setAccent] = useState(() => { const saved = localStorage.getItem('agent-hub-accent'); return validAccent(saved) ? saved : defaultAccent; });
@@ -103,7 +104,7 @@ function App() {
     <main>
       <header><div><div className="eyebrow">TAB / {t(page)}</div><h1>{t(page)}</h1></div></header>
       {error && <div className="banner error" role="alert">{t(error)}<Button appearance="subtle" onClick={() => setError('')}>{t("Закрыть")}</Button></div>}
-      {notice && <div className="banner" role="status">{t(notice)}</div>}
+      {notice && <div className="app-toast" role="status" aria-live="polite"><span>{t(notice)}</span><Button appearance="subtle" size="small" onClick={() => setNotice('')}>{t('Закрыть')}</Button></div>}
       {!snap ? <Spinner label={t("Открываем локальную базу…")}/> : <>
         <Requests requests={snap.requests} act={command}/>
         {page === 'Агенты' && <>
