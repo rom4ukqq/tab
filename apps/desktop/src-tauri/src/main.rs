@@ -90,7 +90,7 @@ async fn connect_telegram(h: H<'_>) -> R<()> {
 }
 #[tauri::command]
 async fn disconnect_telegram(h: H<'_>) -> R<()> {
-    telegram::stop(h.inner()).await.map_err(err)
+    telegram::disconnect(h.inner()).await.map_err(err)
 }
 #[tauri::command]
 async fn revoke_access(h: H<'_>) -> R<()> {
@@ -149,6 +149,12 @@ fn main() {
             let dir = PathBuf::from(std::env::var("LOCALAPPDATA")?).join("AgentHub");
             let hub = tauri::async_runtime::block_on(Hub::open(dir))?;
             app.manage(hub.clone());
+            let reconnect = hub.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = telegram::restore(reconnect.clone()).await {
+                    *reconnect.telegram_status.write().await = e.to_string();
+                }
+            });
             let handle = app.handle().clone();
             let mut events = hub.events.subscribe();
             tauri::async_runtime::spawn(async move {

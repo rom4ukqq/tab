@@ -88,7 +88,8 @@ function App() {
             <h2>Управление с телефона</h2>
             <div className="row"><Button appearance="primary" disabled={busy || !snap.config.pin_hash} onClick={() => command('connect_telegram')}>Подключить</Button><Button onClick={() => command('disconnect_telegram')}>Отключить</Button><Button onClick={() => command('revoke_access')}>Закрыть доступ</Button></div>
             <p>Откройте бота: <strong>/start → PIN → агент → задача</strong>. Проект и нужные папки обсудите с агентом прямо в чате.</p>
-            <p className="muted">Доступ закрывается после 15 минут бездействия, через 8 часов или при перезапуске Hub.</p>
+            <p className="muted">Бот автоматически подключается при запуске Hub, без сообщения в личку. «Отключить» выключает автоподключение до следующего нажатия «Подключить».</p>
+            <p className="muted">Доступ закрывается после 15 минут бездействия, через 8 часов или при перезапуске Hub. Подключение бота сохраняется, PIN-доступ нужно открыть заново.</p>
           </div>
           <p className="muted">Telegram cloud chat не использует E2EE. PIN удаляется из чата по возможности; это дополнительный барьер доступа.</p>
         </>}

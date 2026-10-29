@@ -186,13 +186,27 @@ pub async fn start(hub: Arc<Hub>) -> Result<()> {
     let token = security::secret_get(&format!("{}/telegram", c.machine_id))?
         .ok_or_else(|| anyhow!("Сначала настройте Telegram"))?;
     let client = Client::new(token);
-    client.check().await?;
+    hub.db.put("telegram_autoconnect", "true".into()).await?;
     let cancel = CancellationToken::new();
     *stop = Some(cancel.clone());
     drop(stop);
     *hub.telegram_status.write().await = "Подключается".into();
     tokio::spawn(async move {
-        let result = tokio::select! {r=poll(hub.clone(),client.clone(),cancel.clone())=>r,r=deliver(hub.clone(),client,cancel.clone())=>r};
+        let result = async {
+            loop {
+                let check = tokio::select! { _=cancel.cancelled()=>return Ok(()), r=client.check()=>r };
+                match check {
+                    Ok(()) => break,
+                    Err(e) if retry_connection(&e) => {
+                        *hub.telegram_status.write().await = "Сеть недоступна; переподключение…".into();
+                        let delay = e.downcast_ref::<ApiError>().map(|e| e.retry.max(5)).unwrap_or(5) as u64;
+                        tokio::select! { _=cancel.cancelled()=>return Ok(()), _=tokio::time::sleep(Duration::from_secs(delay))=>{} }
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            tokio::select! {r=poll(hub.clone(),client.clone(),cancel.clone())=>r,r=deliver(hub.clone(),client,cancel.clone())=>r}
+        }.await;
         cancel.cancel();
         hub.revoke().await.ok();
         *hub.telegram_status.write().await = match result {
@@ -202,6 +216,24 @@ pub async fn start(hub: Arc<Hub>) -> Result<()> {
         *hub.telegram_stop.lock().await = None;
     });
     Ok(())
+}
+fn retry_connection(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<ApiError>().is_some_and(|e| e.code == 429 || e.code >= 500)
+        || matches!(e.to_string().as_str(), "Telegram: network outcome unknown" | "Telegram: invalid response")
+}
+pub async fn restore(hub: Arc<Hub>) -> Result<()> {
+    let configured = {
+        let c = hub.config.read().await;
+        c.telegram_user.is_some() && c.pin_hash.is_some()
+    };
+    // Existing configured installations opt in; explicit Disconnect survives restarts.
+    let enabled = hub.db.setting("telegram_autoconnect").await?.map(|s| s == "true").unwrap_or(configured);
+    if configured && enabled { start(hub).await?; }
+    Ok(())
+}
+pub async fn disconnect(hub: &Hub) -> Result<()> {
+    hub.db.put("telegram_autoconnect", "false".into()).await?;
+    stop(hub).await
 }
 pub async fn stop(hub: &Hub) -> Result<()> {
     if let Some(t) = hub.telegram_stop.lock().await.as_ref() {
@@ -715,6 +747,32 @@ async fn deliver(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn disconnected_preference_survives_shutdown_and_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = Hub::open(dir.path().join("data")).await.unwrap();
+        {
+            let mut c = hub.config.write().await;
+            c.telegram_user = Some(1);
+            c.pin_hash = Some("configured".into());
+        }
+        hub.db.put("telegram_autoconnect", "true".into()).await.unwrap();
+        stop(&hub).await.unwrap();
+        assert_eq!(hub.db.setting("telegram_autoconnect").await.unwrap().as_deref(), Some("true"));
+        disconnect(&hub).await.unwrap();
+        restore(hub.clone()).await.unwrap(); // Must not read credentials or contact Telegram.
+        assert!(hub.telegram_stop.lock().await.is_none());
+        assert_eq!(hub.db.setting("telegram_autoconnect").await.unwrap().as_deref(), Some("false"));
+        let count: i64 = hub.db.call(|db| Ok(db.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?)).await.unwrap();
+        assert_eq!(count, 0);
+    }
+    #[test]
+    fn connection_retries_only_transient_errors() {
+        assert!(retry_connection(&anyhow!("Telegram: network outcome unknown")));
+        for code in [429, 500, 503] { assert!(retry_connection(&ApiError { code, retry: 5 }.into())); }
+        for code in [401, 403, 409] { assert!(!retry_connection(&ApiError { code, retry: 0 }.into())); }
+        assert!(!retry_connection(&anyhow!("Webhook configured")));
+    }
     #[tokio::test]
     async fn end_session_is_bound_to_current_route_and_keeps_history() {
         let dir = tempfile::tempdir().unwrap();
