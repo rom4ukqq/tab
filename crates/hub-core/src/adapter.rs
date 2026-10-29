@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 pub async fn discover() -> Vec<Installation> {
     let home = std::env::var("USERPROFILE").unwrap_or_default();
     let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let roaming = std::env::var("APPDATA").unwrap_or_default();
     let mut result = vec![];
     for (provider, paths) in [
         (
@@ -15,7 +16,10 @@ pub async fn discover() -> Vec<Installation> {
         ),
         (
             Provider::Claude,
-            vec![PathBuf::from(&home).join(".local/bin/claude.exe")],
+            vec![
+                PathBuf::from(&home).join(".local/bin/claude.exe"),
+                PathBuf::from(&roaming).join("npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe"),
+            ],
         ),
         (
             Provider::Omp,
