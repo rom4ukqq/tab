@@ -19,10 +19,14 @@ type Snapshot = { config: { machine_name: string; installations: Agent[]; projec
 const pages = ['Агенты', 'Telegram', 'Настройки'];
 const active = (t: Turn) => ['running', 'queued', 'dispatching'].includes(t.state);
 const names: Record<string, string> = { running: 'В работе', queued: 'В очереди', completed: 'Завершено', cancelled: 'Отменено', interrupted: 'Прервано', failed: 'Ошибка', unknown: 'Результат неизвестен' };
+function NavIcon({ index }: { index: number }) {
+  return <svg className="nav-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{index === 0 ? <><rect x="4" y="7" width="16" height="13" rx="4"/><path d="M12 3v4M8 12v2m8-2v2M9 17h6"/></> : index === 1 ? <><path d="m3 10 18-7-5 18-5-7-8-4Z"/><path d="m11 14 10-11"/></> : <><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></>}</svg>;
+}
 function App() {
   const [page, setPage] = useState('Агенты'), [snap, setSnap] = useState<Snapshot>();
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
-  const [dark, setDark] = useState(matchMedia('(prefers-color-scheme: dark)').matches);
+  const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
+  useEffect(() => { localStorage.setItem('agent-hub-theme', dark ? 'dark' : 'light'); }, [dark]);
   const [projectName, setProjectName] = useState(''), [root, setRoot] = useState('');
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
   const numericUser = user.trim();
@@ -46,14 +50,15 @@ function App() {
     const timer = setInterval(() => refresh().catch(() => {}), 2000);
     return () => { disposed = true; clean.forEach(f => f()); clearInterval(timer); };
   }, [refresh]);
-  return <FluentProvider theme={dark ? webDarkTheme : webLightTheme}><div className="shell">
+  const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: dark ? '#c98268' : '#a85d43', colorBrandBackgroundHover: dark ? '#dc957b' : '#914d36', colorBrandBackgroundPressed: dark ? '#b97158' : '#7e412d', colorNeutralForegroundOnBrand: dark ? '#211c19' : '#ffffff', colorBrandForeground1: dark ? '#e3a38b' : '#965037', colorBrandStroke1: dark ? '#c98268' : '#a85d43', borderRadiusMedium: '8px' };
+  return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'}>
     <aside>
-      <div className="brand"><span className="brand-mark">A</span><div>Agent Hub<small>TELEGRAM BRIDGE</small></div></div>
-      <nav aria-label="Основная навигация">{pages.map((p, i) => <button className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><span className="nav-number">0{i + 1}</span>{p}</button>)}</nav>
+      <div className="brand"><span className="brand-mark" aria-hidden="true">✳</span><div>Agent Hub<small>Ваши агенты рядом</small></div></div>
+      <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>
       <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? 'Этот компьютер'}<small>{snap?.telegram_status ?? 'Запуск…'}</small><small>Активных задач: {snap?.turns.filter(active).length ?? 0}</small></div>
     </aside>
     <main>
-      <header><div><div className="eyebrow">УПРАВЛЯЙТЕ АГЕНТАМИ ИЗ TELEGRAM</div><h1>{page}</h1></div><Button className="stop" onClick={() => command('emergency_stop')}>Остановить всё</Button></header>
+      <header><div><div className="eyebrow">Agent Hub / {page}</div><h1>{page}</h1></div><Button className="stop" appearance="subtle" onClick={() => command('emergency_stop')}>Остановить всё</Button></header>
       {error && <div className="banner error" role="alert">{error}<Button appearance="subtle" onClick={() => setError('')}>Закрыть</Button></div>}
       {notice && <div className="banner" role="status">{notice}</div>}
       {!snap ? <Spinner label="Открываем локальную базу…"/> : <>

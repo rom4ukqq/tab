@@ -1,1 +1,35 @@
 .intro{padding:10px 0 18px}.intro h2{font-size:30px;margin:18px 0 10px}.intro p{max-width:680px}.folder{padding:14px 0;border-bottom:1px solid var(--colorNeutralStroke2)}.folder strong,.folder code{display:block}.folder code{margin-top:7px;opacity:.7}.setting{margin:16px 0}main{max-width:1150px;margin:0 auto}
+
+/* Local Libron is optional: no remote font request or unlicensed font bundle. */
+@font-face{font-family:Libron;src:local('Libron');font-display:swap}
+.theme-light{--hub-bg:#faf9f6;--hub-sidebar:#f0eeea;--hub-panel:#fffefa;--hub-border:#e1ded7;--hub-text:#302e2a;--hub-muted:#706c65;--hub-selected:#e4e1da;--hub-accent:#a85d43}
+.theme-dark{--hub-bg:#262522;--hub-sidebar:#201f1d;--hub-panel:#2d2b28;--hub-border:#44413b;--hub-text:#e8e3db;--hub-muted:#b2aba0;--hub-selected:#36332e;--hub-accent:#dc957b}
+.shell{background:var(--hub-bg);color:var(--hub-text);grid-template-columns:240px minmax(0,1fr)}
+.shell aside{background:var(--hub-sidebar);border-color:var(--hub-border);padding:28px 14px 18px}
+.brand{gap:10px;margin:2px 12px 40px;font-size:20px;font-weight:550;letter-spacing:-.6px}
+.brand-mark{background:none;color:var(--hub-accent);font-size:39px;font-weight:400;width:34px;height:40px}
+.brand small{font-size:11px;letter-spacing:0;font-weight:400;color:var(--hub-muted);opacity:1;margin-top:4px}
+.nav{padding:11px 14px;gap:12px;border-radius:7px;margin-bottom:5px;font-size:14px}
+.nav:hover{background:var(--hub-selected)}
+.nav.active{background:var(--hub-selected);box-shadow:none;font-weight:550}
+.nav-icon{flex-shrink:0}.nav-icon circle{fill:var(--hub-sidebar)}
+.sidebar-footer{border-top:1px solid var(--hub-border);padding:19px 12px 0;line-height:1.6;color:var(--hub-text)}
+.sidebar-footer small{color:var(--hub-muted);opacity:1}.dot{background:var(--hub-accent)}
+main{max-width:1040px;padding:38px 56px 70px}
+header{margin-bottom:44px;align-items:center}
+.eyebrow{font-size:12px;letter-spacing:0;text-transform:none;color:var(--hub-muted);opacity:1;margin-bottom:16px}
+h1,h2{font-family:Libron,Georgia,'Times New Roman',serif;font-weight:400;letter-spacing:-.8px}
+h1{font-size:40px;line-height:1.15;margin:0}h2{font-size:27px;line-height:1.3}
+.intro{text-align:center;padding:26px 22px 48px}.intro h2{font-size:37px;margin:22px 0 14px}.intro p{max-width:540px;margin:0 auto;color:var(--hub-muted);opacity:1;line-height:1.75}
+.card{background:var(--hub-panel);border:1px solid var(--hub-border);border-radius:15px;padding:26px 28px;margin-bottom:20px;box-shadow:0 3px 14px #00000003}
+.card h2{margin-top:0}.card p{color:var(--hub-muted);opacity:1}.card .row h2{margin-bottom:0}
+.form-grid{gap:24px 20px;margin:28px 0}.section-heading{margin-bottom:18px;color:var(--hub-muted);font-size:13px}
+.empty{background:transparent;border:1px dashed var(--hub-border);padding:42px 26px;margin-bottom:24px;opacity:1}.empty h3{font-weight:500}.empty p{color:var(--hub-muted)}
+.muted,small{color:var(--hub-muted);opacity:1}.folder{border-color:var(--hub-border)}.folder strong{font-weight:550}
+details.card>summary{font-size:14px;color:var(--hub-text);opacity:1;padding:3px 0}summary{color:var(--hub-muted);opacity:1}
+.request{border-color:var(--hub-accent)}.banner{border-color:var(--hub-border);background:var(--hub-panel);border-radius:12px}.banner.error{border-color:#bb7568}
+.shell .fui-Input,.shell .fui-Textarea{background:var(--hub-bg);border-color:var(--hub-border);border-radius:8px}
+.shell .fui-Button{font-weight:500;min-height:34px;border-radius:8px}.shell .fui-Badge{font-weight:500}
+.shell :focus-visible{outline-color:var(--hub-accent)}
+@media(max-width:1000px){.shell{grid-template-columns:195px minmax(0,1fr)}main{padding:30px 28px 50px}.brand{margin-left:7px}.intro{padding:18px 0 34px}.intro h2{font-size:31px}.form-grid{grid-template-columns:1fr}}
+@media(forced-colors:active){.shell,.shell aside,.card,.banner{background:Canvas;color:CanvasText;border-color:CanvasText}.nav.active{outline:2px solid Highlight}.brand-mark{color:CanvasText}.shell :focus-visible{outline-color:Highlight}}
