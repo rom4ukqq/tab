@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MatrixBackdrop } from './WindowChrome';
+import { MatrixBackdrop } from './CanvasMatrix';
 
 export const backgroundThemes = [{ id: 'matrix', name: 'Матрица' }, { id: 'saveli', name: 'Saveli' }, { id: 'pr0n', name: 'pr0n' }] as const;
 export type BackgroundTheme = typeof backgroundThemes[number]['id'];
