@@ -116,16 +116,18 @@ impl Store {
             let pending: i64 = tx.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?;
             if pending == 0 {
                 tx.execute_batch("CREATE TEMP TABLE delivered_turns AS SELECT id FROM turns WHERE state NOT IN ('queued','dispatching','running') AND EXISTS(SELECT 1 FROM events WHERE turn_id=turns.id AND json_extract(body,'$.kind')='completed' AND seq<=COALESCE((SELECT CAST(value AS INTEGER) FROM runtime_settings WHERE key='tg_event_cursor'),0));
-                    DELETE FROM runtime_settings WHERE key IN (SELECT 'tg_text:'||id FROM delivered_turns);
+                    DELETE FROM runtime_settings WHERE key IN (SELECT 'tg_text:'||id FROM delivered_turns UNION ALL SELECT 'activity_turn:'||id FROM delivered_turns UNION ALL SELECT 'queue:'||id FROM delivered_turns);
                     DELETE FROM interactions WHERE turn_id IN (SELECT id FROM delivered_turns);
                     DELETE FROM events WHERE turn_id IN (SELECT id FROM delivered_turns);
-                    DELETE FROM telegram_messages WHERE turn_id IN (SELECT id FROM delivered_turns);
+                    DELETE FROM telegram_messages WHERE turn_id IN (SELECT id FROM delivered_turns UNION ALL SELECT 'status:'||id FROM delivered_turns);
                     UPDATE turns SET body=json_set(body,'$.text','','$.assets',json('[]')) WHERE id IN (SELECT id FROM delivered_turns);
                     DROP TABLE delivered_turns;")?;
                 // Only discard a closed context once cancellation and message projection finish.
                 tx.execute_batch("CREATE TEMP TABLE discard_sessions AS SELECT id FROM closed_sessions WHERE NOT EXISTS(SELECT 1 FROM turns WHERE session_id=closed_sessions.id AND state IN ('queued','dispatching','running')) AND NOT EXISTS(SELECT 1 FROM events WHERE session_id=closed_sessions.id AND seq>COALESCE((SELECT CAST(value AS INTEGER) FROM runtime_settings WHERE key='tg_event_cursor'),0));
-                    DELETE FROM runtime_settings WHERE key IN (SELECT 'tg_text:'||id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions));
-                    DELETE FROM telegram_messages WHERE turn_id IN (SELECT id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions));
+                    DELETE FROM runtime_settings WHERE key IN (SELECT 'telemetry:'||id FROM discard_sessions UNION ALL SELECT 'agent_options:'||id FROM discard_sessions UNION ALL SELECT 'activity:'||id FROM discard_sessions);
+                    DELETE FROM runtime_settings WHERE json_extract(CASE WHEN key LIKE 'queue_edit:%' THEN value ELSE '{}' END,'$.sid') IN (SELECT id FROM discard_sessions);
+                    DELETE FROM runtime_settings WHERE key IN (SELECT 'tg_text:'||id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions) UNION ALL SELECT 'activity_turn:'||id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions) UNION ALL SELECT 'queue:'||id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions));
+                    DELETE FROM telegram_messages WHERE turn_id IN (SELECT id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions) UNION ALL SELECT 'status:'||id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions));
                     DELETE FROM interactions WHERE turn_id IN (SELECT id FROM turns WHERE session_id IN (SELECT id FROM discard_sessions));
                     DELETE FROM events WHERE session_id IN (SELECT id FROM discard_sessions);
                     DELETE FROM turns WHERE session_id IN (SELECT id FROM discard_sessions);

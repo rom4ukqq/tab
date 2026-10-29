@@ -275,8 +275,82 @@ fn clip(s: &str, max: usize) -> String {
 fn session_buttons(sid: &str) -> Vec<Vec<Value>> {
     let mut end_session = button("Закончить сессию", format!("e:{sid}"));
     end_session["style"] = json!("danger");
-    vec![vec![button("Остановить задачу", format!("t:{sid}")), end_session]]
+    vec![vec![button("Очередь", format!("q:{sid}")), button("Статус", format!("i:{sid}"))], vec![button("Остановить задачу", format!("t:{sid}")), end_session]]
 }
+
+fn telemetry_label(data: &Value) -> String {
+    let effort = data["effort"].as_str().unwrap_or("по настройкам CLI");
+    let context = match (data["tokenUsage"]["last"]["totalTokens"].as_f64(), data["tokenUsage"]["modelContextWindow"].as_f64()) {
+        (Some(used), Some(total)) if total > 0.0 => format!("{:.0}%", (100.0 - used / total * 100.0).clamp(0.0, 100.0)),
+        _ => "нет данных".into(),
+    };
+    let mut limits = Vec::new();
+    let mut add = |name: &str, snapshot: &Value| {
+        for key in ["primary", "secondary"] {
+            let w = &snapshot[key];
+            if let Some(used) = w["usedPercent"].as_f64() {
+                let window = w["windowDurationMins"].as_i64().map(|m| if m % 1440 == 0 { format!("{}д", m / 1440) } else if m % 60 == 0 { format!("{}ч", m / 60) } else { format!("{m}мин") }).unwrap_or_else(|| key.into());
+                limits.push(format!("{name} {window}: {:.0}%", (100.0 - used).clamp(0.0, 100.0)));
+            }
+        }
+    };
+    if let Some(buckets) = data["rateLimitsByLimitId"].as_object().filter(|b| !b.is_empty()) {
+        for (name, value) in buckets { add(name, value); }
+    } else { add("", &data["rateLimits"]); }
+    if limits.is_empty() { if let Some(left)=data["allowanceLeftPercent"].as_f64() { limits.push(format!("{:.0}%", left.clamp(0.0,100.0))); } }
+    format!("Effort: {effort} · Доступ: {}\nКонтекст осталось: {context}\nЛимиты осталось: {}", if data["full_access"] == true { "full" } else { "обычный" }, if limits.is_empty() { "нет данных".into() } else { limits.join(" · ") })
+}
+
+async fn session_status(hub: &Hub, chat: i64, sid: &str) -> Result<()> {
+    let key = format!("telemetry:{sid}");
+    let data = hub.db.call(move |db| {
+        let raw: Option<String> = db.query_row("SELECT value FROM runtime_settings WHERE key=?1", [key], |r| r.get(0)).optional()?;
+        Ok(raw.and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or(json!({})))
+    }).await?;
+    let options = hub.agent_options(sid).await?;
+    let key=format!("activity:{sid}");
+    let activity=hub.db.call(move|db|{
+        let raw:Option<String>=db.query_row("SELECT value FROM runtime_settings WHERE key=?1",[key],|r|r.get(0)).optional()?;
+        Ok(raw.and_then(|s|serde_json::from_str::<crate::telegram_activity::Activity>(&s).ok()))
+    }).await?;
+    let activity=activity.map(|a| {
+        let terminal=["Готово","Остановлено","Ошибка","Результат не подтверждён"].contains(&a.phase.as_str());
+        a.label(if terminal {a.updated_at} else {now()})
+    }).unwrap_or_else(||"Нет запущенной задачи".into());
+    say(hub, chat, &format!("TAB · {activity}\n{}\n\nСледующая задача: effort {}, доступ {}\n/effort LEVEL · /access full · /access normal", telemetry_label(&data), options.effort.as_deref().unwrap_or("default"), if options.full_access { "full" } else { "обычный" }), session_buttons(sid)).await
+}
+
+async fn queue_turns(hub: &Hub, sid: &str, chat: i64, user: i64) -> Result<Vec<Turn>> {
+    let sid = sid.to_string();
+    hub.db.call(move |db| {
+        let mut stmt = db.prepare("SELECT body,state FROM turns WHERE session_id=?1 AND state IN ('queued','running','dispatching','steering','push_unknown') ORDER BY CASE WHEN state='running' THEN 0 ELSE 1 END,COALESCE((SELECT CAST(value AS INTEGER) FROM runtime_settings WHERE key='queue:'||turns.id),rowid),rowid")?;
+        let rows = stmt.query_map([sid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+        let mut turns = Vec::new();
+        for (body, state) in rows { let mut t: Turn = serde_json::from_str(&body)?; t.state = state; if t.chat_id == Some(chat) && t.user_id == Some(user) { turns.push(t); } }
+        Ok(turns)
+    }).await
+}
+
+async fn show_queue(hub: &Hub, chat: i64, user: i64, sid: &str) -> Result<()> {
+    let turns = queue_turns(hub, sid, chat, user).await?;
+    let mut text = String::from("TAB · очередь\n");
+    let mut buttons = Vec::new();
+    for (i, t) in turns.iter().enumerate() {
+        let state = match t.state.as_str() { "running" => "в работе", "steering" => "ожидает подтверждения push", "push_unknown" => "push: исход неизвестен", _ => "ожидает" };
+        text.push_str(&format!("\n{}. {} · {}{}", i + 1, state, clip(&t.text.replace('\n', " "), 140), if t.assets.is_empty() { String::new() } else { format!(" · вложений {}", t.assets.len()) }));
+        let mut row = vec![button(&format!("Отменить {}", i + 1), format!("qc:{}", t.id))];
+        if t.state == "queued" && t.assets.is_empty() { row.push(button(&format!("Push {}", i + 1), format!("qp:{}", t.id))); }
+        buttons.push(row);
+        if t.state == "queued" {
+            buttons.push(vec![button(&format!("Изменить {}",i+1),format!("qe:{}",t.id)),button("↑ Выше",format!("qu:{}",t.id)),button("Объединить со следующим",format!("qm:{}",t.id))]);
+        }
+    }
+    if turns.is_empty() { text.push_str("Пусто."); }
+    text.push_str("\n\nНовые сообщения добавляются в очередь.\n/push ТЕКСТ — передать уточнение в текущую задачу (Codex/OMP).");
+    buttons.extend(session_buttons(sid));
+    say(hub, chat, &text, buttons).await
+}
+
 async fn session_intro(hub: &Hub, chat: i64, session: &Session, resumed: bool) -> Result<()> {
     let text = {
         let config = hub.config.read().await;
@@ -394,7 +468,7 @@ async fn poll(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Result<
                 })
                 .await?;
             if fresh {
-                if let Err(_e) = handle(&hub, &client, u, &mut drafts).await {
+                if let Err(e) = handle(&hub, &client, u, &mut drafts).await {
                     let chat = u["message"]["chat"]["id"]
                         .as_i64()
                         .or(u["callback_query"]["message"]["chat"]["id"].as_i64());
@@ -403,7 +477,7 @@ async fn poll(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Result<
                         .or(u["callback_query"]["from"]["id"].as_i64());
                     if user == hub.config.read().await.telegram_user {
                         if let Some(chat) = chat {
-                            say(&hub,chat,"Действие не выполнено. Проверьте выбранную сессию, доступ и статус на ПК.",vec![]).await?
+                            say(&hub,chat,&format!("TAB · действие не выполнено: {}",clip(&e.to_string(),500)),vec![]).await?
                         }
                     }
                 }
@@ -484,6 +558,38 @@ async fn handle(
     }
     if cb.is_object() {
         let data = cb["data"].as_str().unwrap_or("");
+        if let Some(sid)=data.strip_prefix("of:") {
+            if selected(hub,chat).await?!=sid { return say(hub,chat,"Сессия уже закрыта. Выберите текущую через /start.",vec![]).await }
+            let files=hub.output_files(sid).await?;
+            return say(hub,chat,if files.is_empty(){"В .tab/outbox пока нет файлов. Попросите агента сохранить туда результат."}else{"Файлы в .tab/outbox (могут включать результаты предыдущих задач):"},files.iter().map(|a|vec![button(&a.name,format!("f:{}",a.id))]).collect()).await;
+        }
+        if let Some(tid)=data.strip_prefix("qe:").or_else(||data.strip_prefix("qu:")).or_else(||data.strip_prefix("qm:")) {
+            let sid=selected(hub,chat).await?;
+            if data.starts_with("qe:") {
+                let turns=queue_turns(hub,&sid,chat,user).await?;
+                let Some(turn)=turns.iter().find(|t|t.id==tid && t.state=="queued") else { return say(hub,chat,"Сообщение уже запущено. Обновите /queue.",vec![]).await };
+                let key=format!("queue_edit:{chat}");let value=json!({"sid":sid,"tid":tid}).to_string();
+                hub.db.call(move|db|{db.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![key,value])?;Ok(())}).await?;
+                return say(hub,chat,&format!("Отправьте новый текст одним сообщением. Вложения сохранятся. Редактирование возможно, пока задача ожидает.\n/cancel_edit — отменить ввод\n\n{}",clip(&turn.text,2800)),vec![]).await;
+            }
+            hub.edit_queue(sid.clone(),tid.into(),user,if data.starts_with("qu:"){"up"}else{"merge"}.into(),None).await?;
+            return show_queue(hub,chat,user,&sid).await;
+        }
+        if let Some(sid) = data.strip_prefix("q:").or_else(|| data.strip_prefix("i:")) {
+            if selected(hub, chat).await? != sid { return say(hub, chat, "Карточка другого сеанса. Используйте /status или /queue.", vec![]).await; }
+            return if data.starts_with("q:") { show_queue(hub, chat, user, sid).await } else { session_status(hub, chat, sid).await };
+        }
+        if let Some(tid) = data.strip_prefix("qc:") {
+            let sid = selected(hub, chat).await?;
+            if queue_turns(hub, &sid, chat, user).await?.iter().any(|t| t.id == tid) { hub.cancel(tid).await?; }
+            return say(hub, chat, "TAB · отмена запрошена. /queue — обновить очередь.", session_buttons(&sid)).await;
+        }
+        if let Some(tid) = data.strip_prefix("qp:") {
+            let sid = selected(hub, chat).await?;
+            let result = hub.push_queued(&sid, tid, chat, user).await?;
+            say(hub,chat,&format!("TAB · {result}"),session_buttons(&sid)).await?;
+            return show_queue(hub,chat,user,&sid).await;
+        }
         if data == "sessions" { return agent_menu(hub, chat).await; }
         if let Some(sid) = data.strip_prefix("e:").or_else(|| data.strip_prefix("t:")) {
             let end = data.starts_with("e:");
@@ -533,20 +639,66 @@ async fn handle(
         }
         if data == "draft" {
             let (sid, assets, text, _) = drafts
-                .remove(&chat)
+                .get(&chat).cloned()
                 .ok_or_else(|| anyhow!("Draft expired"))?;
-            hub.submit(sid, text, assets, Some((chat, user))).await?;
-            return Ok(());
+            hub.submit(sid.clone(), text, assets, Some((chat, user))).await?;
+            drafts.remove(&chat);
+            return show_queue(hub, chat, user, &sid).await;
         }
         return Ok(());
     }
+    let edit_key=format!("queue_edit:{chat}");
+    let lookup=edit_key.clone();
+    let editing:Option<String>=hub.db.call(move|db|Ok(db.query_row("SELECT value FROM runtime_settings WHERE key=?1",[lookup],|r|r.get(0)).optional()?)).await?;
+    if text=="/cancel_edit" || (editing.is_some() && !text.trim().is_empty() && !text.starts_with('/')) {
+        hub.db.call(move|db|{db.execute("DELETE FROM runtime_settings WHERE key=?1",[edit_key])?;Ok(())}).await?;
+        if text=="/cancel_edit" { return say(hub,chat,"Редактирование отменено.",vec![]).await }
+        let edit:Value=serde_json::from_str(&editing.unwrap())?;
+        let sid=selected(hub,chat).await?;
+        if edit["sid"]!=sid { return say(hub,chat,"Сессия изменилась. Нажмите «Изменить» в текущей очереди.",vec![]).await }
+        hub.edit_queue(sid.clone(),edit["tid"].as_str().unwrap_or("").into(),user,"edit".into(),Some(text.into())).await?;
+        return show_queue(hub,chat,user,&sid).await;
+    }
     match text{
         "/start"|"/new"|"/sessions"=>return agent_menu(hub,chat).await,
-        "/pcs"|"/status"=>{let s=hub.snapshot().await?;let active=s.turns.iter().filter(|t|t.user_id==Some(user)&&["running","queued"].contains(&t.state.as_str())).count();return say(hub,chat,&format!("{} · online\nАктивных/ожидающих задач: {active}\n{}",c.machine_name,s.telegram_status),vec![]).await},
-        "/help"=>return say(hub,chat,"/start — выбрать агента\n/stop — остановить выбранную сессию\n/lock — отозвать доступ\n/status — состояние\n/answer ID JSON — ответ на конкретный вопрос\nФайлы: прикрепите несколько и нажмите «Отправить вложения». Оригинал изображения отправляйте как document.",vec![]).await,
+        "/pcs"=>return say(hub,chat,&format!("{} · {}",c.machine_name,hub.telegram_status.read().await),vec![]).await,
+        "/status"|"/limits"|"/effort"|"/access"=>{let sid=selected(hub,chat).await?;return session_status(hub,chat,&sid).await},
+        "/queue"=>{let sid=selected(hub,chat).await?;return show_queue(hub,chat,user,&sid).await},
+        "/help"=>return say(hub,chat,"/start — выбрать агента\n/stop — остановить задачи сессии\n/lock — отозвать доступ\n/status, /limits — effort, контекст и лимиты\n/effort LEVEL — effort со следующей задачи (default — настройки CLI)\n/access full или /access normal — доступ со следующей задачи\n/queue — очередь, отмена и Push ожидающего текста\n/push ТЕКСТ — уточнение в текущую задачу (Codex/OMP)\n/answer ID JSON — ответ на вопрос\nФото, голосовые, аудио, видео и документы: прикрепите и нажмите «Отправить вложения». Голосовые передаются файлом; распознавание зависит от инструментов агента.",vec![]).await,
         "/stop"=>{let sid=selected(hub,chat).await?;for t in hub.snapshot().await?.turns.iter().filter(|t|t.session_id==sid&&t.user_id==Some(user)){hub.cancel(&t.id).await?}return Ok(())},
         "/files"=>{let sid=selected(hub,chat).await?;let files=hub.output_files(&sid).await?;return say(hub,chat,"Файлы из .tab/outbox. Нажатие отправляет оригинальные байты как document.",files.iter().map(|a|vec![button(&a.name,format!("f:{}",a.id))]).collect()).await},
         _=>{}
+    }
+    if let Some(value) = text.strip_prefix("/effort ").or_else(|| text.strip_prefix("/access ")) {
+        let sid = selected(hub, chat).await?;
+        let session = hub.session(&sid).await?;
+        if session.provider == Provider::Mock { return say(hub, chat, "Mock не использует effort и права CLI.", vec![]).await; }
+        let mut options = hub.agent_options(&sid).await?;
+        let value = value.trim();
+        if text.starts_with("/effort ") {
+            let levels: &[&str] = match session.provider {
+                Provider::Claude => &["default","low","medium","high","xhigh","max","ultracode"],
+                Provider::Omp => &["default","off","minimal","low","medium","high","xhigh","max","auto"],
+                _ => &["default","none","minimal","low","medium","high","xhigh","max","ultra"],
+            };
+            if !levels.contains(&value) { return say(hub,chat,&format!("Effort: {}. Доступность зависит от модели.",levels.join(", ")),vec![]).await; }
+            options.effort = if value == "default" { None } else { Some(value.into()) };
+        } else {
+            if !["full","normal"].contains(&value) { return say(hub,chat,"/access full — полный доступ без подтверждений; /access normal — обычный режим.",vec![]).await; }
+            options.full_access = value == "full";
+        }
+        hub.set_agent_options(&sid, options).await?;
+        return say(hub,chat,"TAB · настройка сохранена для следующих задач этой сессии. Текущая задача продолжает работу с прежними настройками.",session_buttons(&sid)).await;
+    }
+    if let Some(prompt) = text.strip_prefix("/push ") {
+        let sid = selected(hub, chat).await?;
+        let session = hub.session(&sid).await?;
+        if !matches!(session.provider, Provider::Codex | Provider::Omp) { return say(hub,chat,"Этот агент не поддерживает push. Отправьте обычное сообщение в очередь.",vec![]).await; }
+        if prompt.trim().is_empty() { return say(hub,chat,"/push ТЕКСТ — уточнение для текущей задачи.",vec![]).await; }
+        let turns = queue_turns(hub,&sid,chat,user).await?;
+        let Some(active) = turns.iter().find(|t| t.state == "running") else { return say(hub,chat,"Нет работающей задачи. Отправьте текст обычным сообщением.",vec![]).await; };
+        hub.steer(&active.id,prompt.into()).await?;
+        return say(hub,chat,"TAB · уточнение передано адаптеру; ожидается ответ CLI.",session_buttons(&sid)).await;
     }
     if let Some(answer) = text.strip_prefix("/answer ") {
         let (rid, answer) = answer
@@ -562,10 +714,9 @@ async fn handle(
             .await;
     }
     let sid = selected(hub, chat).await?;
-    let file = if msg["document"].is_object() {
-        &msg["document"]
-    } else if msg["voice"].is_object() {
-        &msg["voice"]
+    let media_kind = ["document", "voice", "audio", "video", "video_note", "animation", "sticker"].into_iter().find(|key| msg[*key].is_object());
+    let file = if let Some(kind) = media_kind {
+        &msg[kind]
     } else {
         msg["photo"]
             .as_array()
@@ -581,10 +732,11 @@ async fn handle(
             bail!("Не более 10 вложений")
         };
         let bytes = client.download(fid).await?;
+        let fallback_name = match media_kind { Some("voice") => "voice.ogg", Some("audio") => "audio.mp3", Some("video") | Some("video_note") | Some("animation") => "video.mp4", Some("sticker") => "sticker.webp", Some("document") => "document", _ => "photo.jpg" };
         let a = hub
             .stage(
                 target.clone(),
-                file["file_name"].as_str().unwrap_or("attachment").into(),
+                file["file_name"].as_str().unwrap_or(fallback_name).into(),
                 bytes,
             )
             .await?;
@@ -612,8 +764,13 @@ async fn handle(
         return Ok(());
     }
     if !text.trim().is_empty() {
-        hub.submit(sid, text.into(), vec![], Some((chat, user)))
+        if let Some(draft) = drafts.get_mut(&chat) {
+            draft.2.push_str(text); draft.2.push('\n'); draft.3 = now();
+            return say(hub,chat,"Текст добавлен к вложениям. Нажмите «Отправить вложения».",vec![vec![button("Отправить вложения","draft".into())]]).await;
+        }
+        hub.submit(sid.clone(), text.into(), vec![], Some((chat, user)))
             .await?;
+        return show_queue(hub, chat, user, &sid).await;
     }
     Ok(())
 }
@@ -628,27 +785,58 @@ async fn project_events(hub: &Hub) -> Result<()> {
         let rows={let mut s=tx.prepare("SELECT e.seq,e.body,t.body FROM events e JOIN turns t ON t.id=e.turn_id WHERE e.seq>?1 ORDER BY e.seq LIMIT 100")?;let rows=s.query_map([cursor],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))?.collect::<Result<Vec<_>,_>>()?;rows};
         let mut last=cursor;
         for(seq,body,turn)in rows{last=seq;let e:Event=serde_json::from_str(&body)?;let t:Turn=serde_json::from_str(&turn)?;let Some(chat)=t.chat_id else{continue};
-            let sbody:String=tx.query_row("SELECT body FROM sessions WHERE id=?1",[&t.session_id],|r|r.get(0))?;let s:Session=serde_json::from_str(&sbody)?;let label=format!("{} · {}",s.provider.key(),clip(&s.title,80));
+            let activity_key=format!("activity_turn:{}",t.id);
+            let raw:Option<String>=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[&activity_key],|r|r.get(0)).optional()?;
+            let had_activity=raw.is_some();
+            let mut activity=raw.and_then(|s|serde_json::from_str::<crate::telegram_activity::Activity>(&s).ok()).unwrap_or_default();
+            let old_phase=activity.phase.clone();activity.update(&e);
+            let activity_json=serde_json::to_string(&activity)?;
+            tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![activity_key,activity_json])?;
+            if had_activity || !matches!(e.kind,EventKind::Completed|EventKind::Error) {
+                tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![format!("activity:{}",t.session_id),activity_json])?;
+            }
+            if !activity.phase.is_empty() && activity.phase!=old_phase {
+                let status_key=format!("status:{}",t.id);
+                let terminal=matches!(e.kind,EventKind::Completed);
+                let buttons=if terminal {vec![vec![button("Файлы результата",format!("of:{}",t.session_id)),button("Очередь",format!("q:{}",t.session_id))]]} else {vec![vec![button("Остановить",format!("x:{}",t.id)),button("Обновить статус",format!("i:{}",t.session_id))]]};
+                let body=json!({"chat_id":chat,"text":format!("TAB · {}",activity.label(e.occurred_at)),"reply_markup":{"inline_keyboard":buttons}});
+                tx.execute("DELETE FROM outbox WHERE route_key=?1 AND state='queued'",[&status_key])?;
+                tx.execute("INSERT INTO outbox(id,method,body,route_key) VALUES(?1,'sendMessage',?2,?3)",params![id(),body.to_string(),status_key])?;
+            }
+            let telemetry_key=format!("telemetry:{}",t.session_id);
+            let raw:Option<String>=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[&telemetry_key],|r|r.get(0)).optional()?;
+            let mut telemetry:Value=raw.and_then(|s|serde_json::from_str(&s).ok()).unwrap_or(json!({}));
+            if let Some(update)=e.data["telemetry"].as_object(){for(k,v)in update{telemetry[k]=v.clone();}tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![telemetry_key,telemetry.to_string()])?;continue}
+            let sbody:String=tx.query_row("SELECT body FROM sessions WHERE id=?1",[&t.session_id],|r|r.get(0))?;let s:Session=serde_json::from_str(&sbody)?;let label=format!("{} · {}\n{}",s.provider.key(),clip(&s.title,80),clip(&telemetry_label(&telemetry),400));
             let rich = matches!(e.kind, EventKind::Message | EventKind::Completed);
-            let mut card=None;let mut buttons=vec![];let mut progress=false;let mut overflow=vec![];
+            let mut card=None;let mut buttons=vec![];let mut progress=false;let mut overflow=vec![];let mut result_card=None;
             match e.kind{
-                EventKind::Message=>{let key=format!("tg_text:{}",t.id);let mut text=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[&key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let delta=e.data["text"].as_str().unwrap_or("");if e.data["delta"]==true{text.push_str(delta)}else{text=delta.into()};text=clip(&text,200000);tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![key,text])?;card=Some(format!("{label}\n{}",clip(&text,3500)));progress=true;},
+                EventKind::Message=>{let key=format!("tg_text:{}",t.id);let mut text=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[&key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let delta=e.data["text"].as_str().unwrap_or("");if e.data["delta"]==true{text.push_str(delta)}else{text=delta.into()};text=clip(&text,200000);tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![key,text])?;card=Some(format!("{label}\n{}",clip(&text,3000)));progress=true;},
                 EventKind::ApprovalRequest|EventKind::UserQuestion=>{let r:Interaction=serde_json::from_value(e.data)?;card=Some(format!("{label}\n{}\n{}{}",r.kind,clip(&serde_json::to_string_pretty(&r.data)?,2500),if r.local_only{"\nОтветьте на ПК: этот native dialog не имеет проверенного remote scope.".into()}else if r.kind=="question"{format!("\n/answer {} JSON\nФормат ответа зависит от вопросов; ключ — native question ID.",r.id)}else{String::new()}));if !r.local_only&&r.kind!="question"{buttons.push(vec![button("Разрешить один раз",format!("a:{}",r.id)),button("Отказать",format!("d:{}",r.id))])}buttons.push(vec![button("Остановить",format!("x:{}",t.id))]);},
-                EventKind::Completed=>{let key=format!("tg_text:{}",t.id);let text=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let first=clip(&text,3400);let mut rest=&text[first.len()..];while !rest.is_empty(){let chunk=clip(rest,3500);rest=&rest[chunk.len()..];overflow.push(chunk);}card=Some(format!("{label}\n{}\n{}",e.data["state"].as_str().unwrap_or("interrupted"),first));progress=true;},
+                EventKind::Completed=>{
+                    let key=format!("tg_text:{}",t.id);let text=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let first=clip(&text,3000);let mut rest=&text[first.len()..];while !rest.is_empty(){let chunk=clip(rest,3500);rest=&rest[chunk.len()..];overflow.push(chunk);}card=Some(format!("{label}\n{}\n{}",e.data["state"].as_str().unwrap_or("interrupted"),first));progress=true;
+                    let files=if activity.files.is_empty(){"CLI не сообщил об изменённых файлах.".into()}else{format!("Изменённые файлы по событиям CLI ({}):\n{}",activity.files.len(),clip(&activity.files.iter().take(20).cloned().collect::<Vec<_>>().join("\n"),1800))};
+                    let excerpt=if text.trim().is_empty(){"Агент не прислал текстовый итог.".into()}else{format!("Из ответа агента:\n{}{}",clip(text.trim(),900),if text.encode_utf16().count()>900{"…"}else{""})};
+                    result_card=Some(format!("TAB · результат · {}\n\n{excerpt}\n\n{files}",activity.label(e.occurred_at)));
+                },
                 EventKind::Error=>{card=Some(format!("{label}\nОшибка: {}",clip(&e.data.to_string(),3000)));},
-                EventKind::Progress=>{card=Some(format!("{label}\n{}",clip(&e.data.to_string(),1000)));progress=true;},
+                EventKind::Progress=>{if e.data["text"]!="Задача запущена" && e.data["text"]!="Агент думает" {card=Some(format!("{label}\n{}",clip(e.data["text"].as_str().unwrap_or("Статус обновлён"),1000)));}},
                 _=>{}
             }
             if let Some(text)=card{
                 buttons.extend(session_buttons(&t.session_id));
                 let mut body=json!({"chat_id":chat,"text":text,"reply_markup":{"inline_keyboard":buttons}});
                 if rich {
-                    body["text"] = json!(crate::telegram_render::markdown(&text));
+                    body["text"] = json!(crate::telegram_render::monospace(&text));
                     body["parse_mode"] = json!("HTML");
                     body["_plain_text"] = json!(text);
                 }
                 let key=if progress{Some(t.id.clone())}else{None};if let Some(ref key)=key{tx.execute("DELETE FROM outbox WHERE route_key=?1 AND state='queued'",[key])?;}tx.execute("INSERT INTO outbox(id,method,body,route_key) VALUES(?1,'sendMessage',?2,?3)",params![id(),body.to_string(),key])?;
-                for chunk in overflow { let body=json!({"chat_id":chat,"text":crate::telegram_render::markdown(&chunk),"parse_mode":"HTML","_plain_text":chunk,"reply_markup":{"inline_keyboard":session_buttons(&t.session_id)}});tx.execute("INSERT INTO outbox(id,method,body) VALUES(?1,'sendMessage',?2)",params![id(),body.to_string()])?; }
+                for chunk in overflow { let body=json!({"chat_id":chat,"text":crate::telegram_render::monospace(&chunk),"parse_mode":"HTML","_plain_text":chunk,"reply_markup":{"inline_keyboard":session_buttons(&t.session_id)}});tx.execute("INSERT INTO outbox(id,method,body) VALUES(?1,'sendMessage',?2)",params![id(),body.to_string()])?; }
+            }
+            if let Some(summary)=result_card {
+                let body=json!({"chat_id":chat,"text":summary,"reply_markup":{"inline_keyboard":[[button("Скачать файлы результата",format!("of:{}",t.session_id)),button("Очередь",format!("q:{}",t.session_id))]]}});
+                tx.execute("INSERT INTO outbox(id,method,body) VALUES(?1,'sendMessage',?2)",params![id(),body.to_string()])?;
             }
         }
         tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES('tg_event_cursor',?1)",[last.to_string()])?;tx.commit()?;Ok(())

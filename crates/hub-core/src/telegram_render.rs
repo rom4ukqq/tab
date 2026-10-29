@@ -4,6 +4,11 @@ fn escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
+/// Render agent output as literal monospace text, including incomplete streaming chunks.
+pub fn monospace(s: &str) -> String {
+    format!("<pre>{}</pre>", escape(s))
+}
+
 /// Convert CommonMark into Telegram's limited HTML, never passing model HTML through.
 /// Parser closes incomplete streaming blocks; unsupported layout remains readable text.
 pub fn markdown(s: &str) -> String {

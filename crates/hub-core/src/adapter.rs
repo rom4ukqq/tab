@@ -85,7 +85,19 @@ pub async fn run(
     turn: Turn,
     root: PathBuf,
     tx: mpsc::Sender<NativeEvent>,
+    controls: mpsc::Receiver<Control>,
+) -> Result<()> {
+    run_with_options(install, session, turn, root, tx, controls, AgentOptions::default()).await
+}
+
+pub async fn run_with_options(
+    install: Installation,
+    session: Session,
+    turn: Turn,
+    root: PathBuf,
+    tx: mpsc::Sender<NativeEvent>,
     mut controls: mpsc::Receiver<Control>,
+    options: AgentOptions,
 ) -> Result<()> {
     if install.provider == Provider::Mock {
         return run_mock(turn, tx, controls).await;
@@ -123,12 +135,22 @@ pub async fn run(
         _ => unreachable!(),
     };
     if install.provider == Provider::Claude {
+        if options.full_access {
+            if let Some(i) = args.iter().position(|a| a == "--permission-mode") { args[i + 1] = "bypassPermissions".into(); }
+        }
+        if let Some(effort) = &options.effort { args.extend(["--effort".into(), effort.clone()]); }
         if let Some(n) = &session.native_id {
             args.extend(["--resume".into(), n.clone()])
         }
         if let Some(m) = &session.model {
             args.extend(["--model".into(), m.clone()])
         }
+    }
+    if install.provider == Provider::Omp {
+        if options.full_access {
+            if let Some(i) = args.iter().position(|a| a == "--approval-mode") { args[i + 1] = "yolo".into(); }
+        }
+        if let Some(effort) = &options.effort { args.extend(["--thinking".into(), effort.clone()]); }
     }
     let mut process = Process::spawn(&install.executable, &args, &root)?;
     let content = prepare_input(&turn, &install.provider)?;
@@ -139,6 +161,11 @@ pub async fn run(
     let mut cancel_at = None;
     let mut serial = 100i64;
     let mut steer_pending = std::collections::HashSet::<i64>::new();
+    let mut steer_replies = std::collections::HashMap::<i64, tokio::sync::oneshot::Sender<bool>>::new();
+    let mut omp_status_at = tokio::time::Instant::now();
+    let approval = if options.full_access { "never" } else { "on-request" };
+    let sandbox = if options.full_access { "danger-full-access" } else { "workspace-write" };
+    emit(&tx, EventKind::Progress, json!({"telemetry":{"effort":options.effort,"full_access":options.full_access}})).await?;
     match install.provider{
         Provider::Codex=>process.send(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"tab","version":"0.1.0"},"capabilities":{"experimentalApi":true}}})).await?,
         Provider::Claude=>process.send(json!({"type":"control_request","request_id":"hub-init","request":{"subtype":"initialize","hooks":null}})).await?,
@@ -157,9 +184,23 @@ pub async fn run(
                     Provider::Omp=>{steer_pending.insert(serial);process.send(json!({"id":serial.to_string(),"type":"steer","message":text})).await?},
                     _=>emit(&tx,EventKind::Error,json!({"text":"Этот адаптер не поддерживает steering; отправьте следующий turn"})).await?}},
                 Some(Control::Respond{request,decision,answers})=>process.send(response(&install.provider,&request,&decision,answers)?).await?,
+                Some(Control::SteerWithAck{text,reply})=>{
+                    if !started||cancelling { let _=reply.send(false);continue }
+                    serial+=1;
+                    let request=match install.provider {
+                        Provider::Codex if !native_turn.is_empty()=>json!({"id":serial,"method":"turn/steer","params":{"threadId":thread_id,"expectedTurnId":native_turn,"input":[{"type":"text","text":text}]}}),
+                        Provider::Omp=>json!({"id":serial.to_string(),"type":"steer","message":text}),
+                        _=>{let _=reply.send(false);continue}
+                    };
+                    steer_pending.insert(serial);steer_replies.insert(serial,reply);process.send(request).await?;
+                },
                 None=>break,
             },
             _=tick.tick()=>{
+                if install.provider==Provider::Omp && started && !cancelling && omp_status_at.elapsed()>Duration::from_secs(10) {
+                    process.send(json!({"id":"telemetry","type":"get_state"})).await?;
+                    omp_status_at=tokio::time::Instant::now();
+                }
                 if !started&&handshake.elapsed()>Duration::from_secs(30){bail!("CLI handshake timeout")}
                 if cancel_at.map(|t|t.elapsed()>Duration::from_secs(5)).unwrap_or(false){break}
             },
@@ -169,10 +210,11 @@ pub async fn run(
                 let v:Value=serde_json::from_str(&line).map_err(|_|anyhow!("Неверный JSON от CLI"))?;
                 match install.provider{
                     Provider::Codex=>{
-                        if let Some(i)=v["id"].as_i64(){if steer_pending.remove(&i){emit(&tx,EventKind::Progress,json!({"text":if v.get("error").is_some(){"Steering отклонён; сообщение не поставлено повторно в очередь"}else{"Steering принят"}})).await?;continue}}
+                        if let Some(i)=v["id"].as_i64(){if steer_pending.remove(&i){let accepted=v.get("error").is_none();if let Some(reply)=steer_replies.remove(&i){let _=reply.send(accepted);}else{emit(&tx,EventKind::Progress,json!({"text":if accepted{"Уточнение принято"}else{"Уточнение отклонено; отправьте его обычным сообщением"}})).await?;}continue}}
+                        if v["id"]==4{emit(&tx,EventKind::Progress,json!({"telemetry":{"rateLimits":v["result"]["rateLimits"],"rateLimitsByLimitId":v["result"]["rateLimitsByLimitId"]}})).await?;continue}
                         if v.get("error").is_some()&&v.get("method").is_none(){bail!("Codex отклонил запрос: {}",v["error"]["message"].as_str().unwrap_or("protocol error"))}
-                        if v["id"]==1{process.send(json!({"method":"initialized","params":{}})).await?;let mut params=json!({"cwd":root,"sandbox":"workspace-write","approvalPolicy":"on-request"});if let Some(m)=&session.model{params["model"]=json!(m)};let method=if let Some(n)=&session.native_id{params["threadId"]=json!(n);"thread/resume"}else{"thread/start"};process.send(json!({"id":2,"method":method,"params":params})).await?;continue}
-                        if v["id"]==2{thread_id=v["result"]["thread"]["id"].as_str().ok_or_else(||anyhow!("Missing native thread ID"))?.into();tx.send(NativeEvent::Session(thread_id.clone())).await?;process.send(json!({"id":3,"method":"turn/start","params":{"threadId":thread_id,"input":content,"approvalPolicy":"on-request"}})).await?;started=true;continue}
+                        if v["id"]==1{process.send(json!({"method":"initialized","params":{}})).await?;process.send(json!({"id":4,"method":"account/rateLimits/read","params":{}})).await?;let mut params=json!({"cwd":root,"sandbox":sandbox,"approvalPolicy":approval});if let Some(m)=&session.model{params["model"]=json!(m)};let method=if let Some(n)=&session.native_id{params["threadId"]=json!(n);"thread/resume"}else{"thread/start"};process.send(json!({"id":2,"method":method,"params":params})).await?;continue}
+                        if v["id"]==2{thread_id=v["result"]["thread"]["id"].as_str().ok_or_else(||anyhow!("Missing native thread ID"))?.into();tx.send(NativeEvent::Session(thread_id.clone())).await?;emit(&tx,EventKind::Progress,json!({"telemetry":{"effort":options.effort.as_ref().map(|s|json!(s)).unwrap_or(v["result"]["reasoningEffort"].clone()),"model":v["result"]["model"]}})).await?;let mut params=json!({"threadId":thread_id,"input":content,"approvalPolicy":approval});if let Some(effort)=&options.effort{params["effort"]=json!(effort)};process.send(json!({"id":3,"method":"turn/start","params":params})).await?;started=true;continue}
                         if v["id"]==3{native_turn=v["result"]["turn"]["id"].as_str().unwrap_or("").into();continue}
                         let method=v["method"].as_str().unwrap_or("");let p=&v["params"];
                         if v.get("id").is_some()&&!method.is_empty(){
@@ -180,7 +222,9 @@ pub async fn run(
                             tx.send(NativeEvent::Request{native_id:v["id"].clone(),kind:kind.into(),data:json!({"method":method,"params":p}),local_only:local}).await?;continue
                         }
                         match method{
-                            "turn/started"=>{native_turn=p["turn"]["id"].as_str().unwrap_or("").into();},
+                            "thread/tokenUsage/updated"=>emit(&tx,EventKind::Progress,json!({"telemetry":{"tokenUsage":p["tokenUsage"]}})).await?,
+                            "account/rateLimits/updated"=>emit(&tx,EventKind::Progress,json!({"telemetry":{"rateLimits":p["rateLimits"],"rateLimitsByLimitId":p["rateLimitsByLimitId"]}})).await?,
+                            "turn/started"=>{native_turn=p["turn"]["id"].as_str().unwrap_or("").into();emit(&tx,EventKind::Progress,json!({"text":"Агент думает"})).await?;},
                             "item/agentMessage/delta"=>emit(&tx,EventKind::Message,json!({"text":p["delta"],"delta":true})).await?,
                             "item/reasoning/summaryTextDelta"=>emit(&tx,EventKind::ReasoningSummary,json!({"text":p["delta"],"delta":true})).await?,
                             "item/started"=>{if p["item"]["type"]!="agentMessage"{emit(&tx,EventKind::ToolCall,p["item"].clone()).await?}},
@@ -190,7 +234,7 @@ pub async fn run(
                     },
                     Provider::Claude=>{
                         match v["type"].as_str().unwrap_or(""){
-                            "control_response" if v["response"]["request_id"]=="hub-init"=>{if v["response"]["subtype"]=="error"{bail!("Claude rejected initialization")};process.send(json!({"type":"user","message":{"role":"user","content":content}})).await?;started=true},
+                            "control_response" if v["response"]["request_id"]=="hub-init"=>{if v["response"]["subtype"]=="error"{bail!("Claude rejected initialization")};process.send(json!({"type":"user","message":{"role":"user","content":content}})).await?;started=true;emit(&tx,EventKind::Progress,json!({"text":"Агент думает"})).await?;},
                             "system"=>{if let Some(s)=v["session_id"].as_str(){tx.send(NativeEvent::Session(s.into())).await?}},
                             "control_cancel_request"=>bail!("Native request отменён; turn остановлен, прежние ответы недействительны"),
                             "control_request"=>{if v["request"]["subtype"]!="can_use_tool"{process.send(json!({"type":"control_response","response":{"subtype":"error","request_id":v["request_id"],"error":"Unsupported control request"}})).await?;continue};let question=v["request"]["tool_name"]=="AskUserQuestion";tx.send(NativeEvent::Request{native_id:v["request_id"].clone(),kind:if question{"question"}else{"approval"}.into(),data:v["request"].clone(),local_only:false}).await?},
@@ -201,10 +245,16 @@ pub async fn run(
                         }
                     },
                     Provider::Omp=>{
+                        if v["type"]=="response" && (v["id"]=="state" || v["id"]=="telemetry") {
+                            if v["success"]==true { let d=&v["data"];emit(&tx,EventKind::Progress,json!({"telemetry":{"effort":d["thinkingLevel"],"tokenUsage":{"last":{"totalTokens":d["contextUsage"]["tokens"]},"modelContextWindow":d["contextUsage"]["contextWindow"]},"allowanceLeftPercent":d["usageLimit"]["allowanceLeftPercent"]}})).await?; }
+                            if v["id"]=="telemetry" { continue }
+                        }
+                        if let Some(i)=v["id"].as_str().and_then(|s|s.parse::<i64>().ok()){if steer_pending.remove(&i){let accepted=v["success"]==true;if let Some(reply)=steer_replies.remove(&i){let _=reply.send(accepted);}else{emit(&tx,EventKind::Progress,json!({"text":if accepted{"Уточнение принято"}else{"Уточнение отклонено; отправьте его обычным сообщением"}})).await?;}continue}}
                         match v["type"].as_str().unwrap_or(""){
                             "ready"=>{if let Some(n)=&session.native_id{process.send(json!({"id":"resume","type":"switch_session","sessionPath":n})).await?}else{process.send(json!({"id":"state","type":"get_state"})).await?}},
                             "response"=>{if v["success"]==false{bail!("OMP отклонил команду: {}",v["error"])}if v["id"]=="resume"{process.send(json!({"id":"state","type":"get_state"})).await?}if v["id"]=="state"{if let Some(n)=v["data"]["sessionFile"].as_str(){tx.send(NativeEvent::Session(n.into())).await?};if let Some(model)=&session.model{let Some((provider,model_id))=model.split_once('/')else{bail!("OMP model: provider/modelId")};process.send(json!({"id":"model","type":"set_model","provider":provider,"modelId":model_id})).await?}else{process.send(content.clone()).await?;started=true}}if v["id"]=="model"{process.send(content.clone()).await?;started=true}},
                             "message_update"=>{let e=&v["assistantMessageEvent"];if e["type"]=="text_delta"{emit(&tx,EventKind::Message,json!({"text":e["delta"],"delta":true})).await?}},
+                            "agent_start"=>emit(&tx,EventKind::Progress,json!({"text":"Агент думает"})).await?,
                             "tool_execution_start"=>emit(&tx,EventKind::ToolCall,v.clone()).await?,
                             "tool_execution_end"=>emit(&tx,EventKind::ToolResult,v.clone()).await?,
                             "extension_ui_request"=>{let m=v["method"].as_str().unwrap_or("");if ["select","confirm","input","editor","ask"].contains(&m){tx.send(NativeEvent::Request{native_id:v["id"].clone(),kind:"native_dialog".into(),data:v.clone(),local_only:true}).await?}else if m=="cancel"{bail!("OMP отменил native dialog; turn остановлен для аннулирования прежних ответов")}},
@@ -228,7 +278,10 @@ fn prepare_input(turn: &Turn, provider: &Provider) -> Result<Value> {
         if a.mime.starts_with("image/") {
             images.push(a)
         } else {
-            text.push_str(&format!("\nВложение {}: {}", a.name, a.path.display()))
+            text.push_str(&format!("\nВложение {} ({}): {}", a.name, a.mime, a.path.display()));
+            if a.mime.starts_with("audio/") || a.name.starts_with("voice.") {
+                text.push_str("\nЭто аудиовложение. Если доступны инструменты распознавания речи, расшифруй его и используй содержание как сообщение пользователя. Если инструментов нет, сообщи об этом; не выдумывай расшифровку.");
+            }
         }
     }
     Ok(match provider {

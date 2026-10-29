@@ -5,6 +5,7 @@ pub mod security;
 pub mod store;
 pub mod telegram;
 mod telegram_render;
+mod telegram_activity;
 
 use anyhow::{anyhow, bail, Result};
 use domain::*;
@@ -415,13 +416,101 @@ impl Hub {
         if let Some(a) = self.active.lock().await.get(turn_id) {
             a.cancel.cancel();
         }
+        let tid = turn_id.to_string();
+        self.db.call(move |db| { db.execute("UPDATE turns SET state='cancelled' WHERE id=?1 AND state='push_unknown'", [tid])?; Ok(()) }).await?;
         Ok(())
     }
     pub async fn steer(&self, turn_id: &str, text: String) -> Result<()> {
+        let tid = turn_id.to_string();
+        let running = self.db.call(move |db| Ok(db.query_row("SELECT state FROM turns WHERE id=?1", [tid], |r| r.get::<_, String>(0))? == "running")).await?;
+        if !running { bail!("Задача ещё не запущена; сообщение остаётся в очереди") }
         let map = self.active.lock().await;
         let a = map.get(turn_id).ok_or_else(|| anyhow!("Turn не активен"))?;
         a.control.send(Control::Steer(text)).await?;
         Ok(())
+    }
+    pub async fn agent_options(&self, sid: &str) -> Result<AgentOptions> {
+        let key = format!("agent_options:{sid}");
+        self.db.call(move |db| {
+            let value: Option<String> = db.query_row("SELECT value FROM runtime_settings WHERE key=?1", [key], |r| r.get(0)).optional()?;
+            Ok(value.map(|v| serde_json::from_str(&v)).transpose()?.unwrap_or_default())
+        }).await
+    }
+    pub async fn push_queued(&self, sid: &str, tid: &str, chat: i64, user: i64) -> Result<String> {
+        if !self.authorized(user, true).await? { bail!("Доступ истёк") }
+        let session = self.session(sid).await?;
+        if !matches!(session.provider, Provider::Codex | Provider::Omp) { return Ok("Push поддерживают Codex и OMP.".into()); }
+        let (sid, tid) = (sid.to_string(), tid.to_string());
+        let queued_id = tid.clone();
+        let claimed = self.db.call(move |db| {
+            let tx = db.transaction()?;
+            let row: Option<String> = tx.query_row("SELECT body FROM turns WHERE id=?1 AND session_id=?2 AND state='queued'", params![tid,sid], |r| r.get(0)).optional()?;
+            let Some(body) = row else { return Ok(None) };
+            let queued: Turn = serde_json::from_str(&body)?;
+            if queued.chat_id != Some(chat) || queued.user_id != Some(user) || !queued.assets.is_empty() { return Ok(None) }
+            let active: Option<String> = tx.query_row("SELECT body FROM turns WHERE session_id=?1 AND state='running'", [sid], |r|r.get(0)).optional()?;
+            let Some(active) = active else { return Ok(None) };
+            let active: Turn = serde_json::from_str(&active)?;
+            if active.chat_id != Some(chat) || active.user_id != Some(user) { return Ok(None) }
+            tx.execute("UPDATE turns SET state='steering' WHERE id=?1", [tid])?;
+            tx.commit()?;
+            Ok(Some((active.id, queued.text)))
+        }).await?;
+        let Some((active_id, text)) = claimed else { return Ok("Push недоступен: нужна работающая задача и ожидающее текстовое сообщение без вложений.".into()) };
+        let (reply, result) = tokio::sync::oneshot::channel();
+        let sent = {
+            let map = self.active.lock().await;
+            map.get(&active_id).map(|a| a.control.try_send(Control::SteerWithAck { text, reply }).is_ok()).unwrap_or(false)
+        };
+        let (state, message) = if !sent { ("queued", "Адаптер недоступен; сообщение осталось в очереди.") } else {
+            match tokio::time::timeout(std::time::Duration::from_secs(15), result).await {
+                Ok(Ok(true)) => ("pushed", "Сообщение принято в текущую задачу и снято с очереди."),
+                Ok(Ok(false)) => ("queued", "CLI отклонил push; сообщение осталось в очереди."),
+                _ => ("push_unknown", "CLI не подтвердил push за 15 секунд. Исход неизвестен; автоматического повтора нет. Текст сохранён в /queue."),
+            }
+        };
+        self.db.call(move |db| { db.execute("UPDATE turns SET state=?2 WHERE id=?1 AND state='steering'",params![queued_id,state])?;Ok(()) }).await?;
+        Ok(message.into())
+    }
+    pub async fn set_agent_options(&self, sid: &str, options: AgentOptions) -> Result<()> {
+        let key = format!("agent_options:{sid}");
+        let value = serde_json::to_string(&options)?;
+        self.db.call(move |db| { db.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)", params![key,value])?; Ok(()) }).await
+    }
+    pub async fn edit_queue(&self, sid: String, tid: String, user: i64, action: String, text: Option<String>) -> Result<()> {
+        if !self.authorized(user, true).await? { bail!("Доступ истёк") }
+        self.db.call(move |db| {
+            let tx = db.transaction()?;
+            let body: Option<String> = tx.query_row("SELECT body FROM turns WHERE id=?1 AND session_id=?2 AND state='queued'",params![tid,sid],|r|r.get(0)).optional()?;
+            let mut turn: Turn = serde_json::from_str(&body.ok_or_else(||anyhow!("Сообщение уже запущено или снято с очереди. Обновите /queue."))?)?;
+            if turn.user_id != Some(user) || turn.chat_id != Some(user) { bail!("Недоступная задача") }
+            let ids = {
+                let mut stmt=tx.prepare("SELECT id FROM turns WHERE session_id=?1 AND state='queued' ORDER BY COALESCE((SELECT CAST(value AS INTEGER) FROM runtime_settings WHERE key='queue:'||turns.id),rowid),rowid")?;
+                let rows=stmt.query_map([&sid],|r|r.get::<_,String>(0))?.collect::<Result<Vec<_>,_>>()?;rows
+            };
+            let at=ids.iter().position(|id|id==&tid).ok_or_else(||anyhow!("Очередь изменилась"))?;
+            match action.as_str() {
+                "edit" => { let text=text.unwrap_or_default();if text.trim().is_empty() || text.len()>80000 { bail!("Нужен непустой текст до 80000 байт") }turn.text=text; },
+                "up" => {
+                    let mut ids=ids;
+                    if at>0 { ids.swap(at,at-1); }
+                    for (i,id) in ids.iter().enumerate() { tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![format!("queue:{id}"),(i as i64 - 1000).to_string()])?; }
+                },
+                "merge" => {
+                    let next=ids.get(at+1).ok_or_else(||anyhow!("После этого сообщения нет ожидающей задачи"))?;
+                    let raw:String=tx.query_row("SELECT body FROM turns WHERE id=?1",[next],|r|r.get(0))?;
+                    let other:Turn=serde_json::from_str(&raw)?;
+                    if other.user_id!=Some(user) || other.chat_id!=Some(user) { bail!("Недоступная задача") }
+                    turn.text=format!("{}\n\n{}",turn.text,other.text);
+                    turn.assets.extend(other.assets);
+                    if turn.text.len()>80000 || turn.assets.len()>10 { bail!("После объединения превышен лимит текста или 10 вложений") }
+                    tx.execute("UPDATE turns SET state='merged',body=json_set(body,'$.text','','$.assets',json('[]')) WHERE id=?1",[next])?;
+                },
+                _ => bail!("Неизвестное действие очереди"),
+            }
+            tx.execute("UPDATE turns SET body=?2 WHERE id=?1",params![tid,serde_json::to_string(&turn)?])?;
+            tx.commit()?;Ok(())
+        }).await
     }
     pub async fn submit(
         self: &Arc<Self>,
@@ -528,6 +617,7 @@ impl Hub {
             .find(|p| p.id == initial.project_id)
             .cloned()
             .ok_or_else(|| anyhow!("Проект отсутствует"))?;
+        let (_permits, turn) = loop {
         let permits = async {
             let s = self
                 .lock(format!("session:{}", initial.id))
@@ -542,7 +632,23 @@ impl Hub {
             let g = self.slots.clone().acquire_owned().await?;
             Ok::<_, anyhow::Error>((s, p, g))
         };
-        let _permits = tokio::select! {p=permits=>p?,_=cancel.cancelled()=>{self.finish(&turn,"cancelled").await?;return Ok(())}};
+        let permits = tokio::select! {p=permits=>p?,_=cancel.cancelled()=>{self.finish(&turn,"cancelled").await?;return Ok(())}};
+        let tid=turn.id.clone();
+        let (pending, claimed)=self.db.call(move |db| {
+            let tx=db.transaction()?;
+            let (body,state):(String,String)=tx.query_row("SELECT body,state FROM turns WHERE id=?1",[&tid],|r|Ok((r.get(0)?,r.get(1)?)))?;
+            if !["queued","steering"].contains(&state.as_str()) { return Ok((false,None)) }
+            let current:Turn=serde_json::from_str(&body)?;
+            let head:Option<String>=tx.query_row("SELECT id FROM turns WHERE session_id=?1 AND state IN ('queued','steering') ORDER BY COALESCE((SELECT CAST(value AS INTEGER) FROM runtime_settings WHERE key='queue:'||turns.id),rowid),rowid LIMIT 1",[&current.session_id],|r|r.get(0)).optional()?;
+            if state=="steering" || head.as_deref()!=Some(tid.as_str()) { return Ok((true,None)) }
+            tx.execute("UPDATE turns SET state='dispatching' WHERE id=?1",[tid])?;
+            tx.commit()?;Ok((true,Some(current)))
+        }).await?;
+        if let Some(current)=claimed { break (permits,current) }
+        drop(permits);
+        if !pending { return Ok(()) }
+        tokio::select! { _=tokio::time::sleep(std::time::Duration::from_millis(100))=>{}, _=cancel.cancelled()=>{self.finish(&turn,"cancelled").await?;return Ok(())} }
+        };
         let session = self.session(&turn.session_id).await?;
         let c = self.config.read().await.clone();
         if let Some(u) = turn.user_id {
@@ -580,13 +686,15 @@ impl Hub {
         )
         .await?;
         let (tx, mut events) = mpsc::channel(128);
-        let mut task = tokio::spawn(adapter::run(
+        let options = self.agent_options(&session.id).await?;
+        let mut task = tokio::spawn(adapter::run_with_options(
             install,
             session,
             turn.clone(),
             project.root,
             tx,
             rx,
+            options,
         ));
         let _abort = AbortTask(task.abort_handle());
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -644,18 +752,19 @@ impl Hub {
     }
     async fn finish(&self, turn: &Turn, state: &str) -> Result<()> {
         let (t, s) = (turn.id.clone(), state.to_string());
-        self.db
+        let changed = self.db
             .call(move |c| {
                 let tx = c.transaction()?;
-                tx.execute("UPDATE turns SET state=?2 WHERE id=?1", params![t, s])?;
+                let changed=tx.execute("UPDATE turns SET state=?2 WHERE id=?1 AND state NOT IN ('merged','pushed')", params![t, s])?;
                 tx.execute(
                     "UPDATE interactions SET state='obsolete' WHERE turn_id=?1 AND state='pending'",
                     [t],
                 )?;
                 tx.commit()?;
-                Ok(())
+                Ok(changed>0)
             })
             .await?;
+        if !changed { return Ok(()) }
         self.publish(turn, EventKind::Completed, json!({"state":state}))
             .await?;
         Ok(())
@@ -774,6 +883,14 @@ impl Hub {
             "image/jpeg"
         } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
             "image/webp"
+        } else if bytes.starts_with(b"OggS") {
+            "audio/ogg"
+        } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE") {
+            "audio/wav"
+        } else if bytes.starts_with(b"fLaC") {
+            "audio/flac"
+        } else if bytes.starts_with(b"ID3") {
+            "audio/mpeg"
         } else {
             "application/octet-stream"
         };
@@ -786,7 +903,8 @@ impl Hub {
             }
         }
         let aid = id();
-        let path = dir.join(&aid);
+        let extension = std::path::Path::new(&name).extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+        let path = if ["ogg","oga","mp3","mp4","m4a","wav","flac","webm","mov"].contains(&extension.as_str()) { dir.join(format!("{aid}.{extension}")) } else { dir.join(&aid) };
         let mut file = std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)

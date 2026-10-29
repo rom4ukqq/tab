@@ -155,7 +155,14 @@ pub struct Snapshot {
     pub telegram_authorized: bool,
     pub pairing_code: Option<PairingCode>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AgentOptions {
+    pub effort: Option<String>,
+    #[serde(default)]
+    pub full_access: bool,
+}
+
+#[derive(Debug)]
 pub enum Control {
     Cancel,
     Respond {
@@ -164,6 +171,7 @@ pub enum Control {
         answers: Value,
     },
     Steer(String),
+    SteerWithAck { text: String, reply: tokio::sync::oneshot::Sender<bool> },
 }
 #[derive(Clone, Debug)]
 pub enum NativeEvent {
