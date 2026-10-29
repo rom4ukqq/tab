@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 export type Language = 'en' | 'ru';
 const strings: Record<string, string> = {
+  'Отправьте этот PIN боту в Telegram':'Send this PIN to your Telegram bot',
+  'Одноразовый код · до':'One-time code · expires at',
+  'Для нового подтверждения получите PIN и отправьте его боту.':'To verify again, generate a PIN and send it to your bot.',
+  'Новый PIN':'New PIN',
   'Импорт темы':'Import theme', 'Импорт…':'Importing…', 'Тема импортирована.':'Theme imported.', 'ZIP из TAB Theme Generator':'ZIP from TAB Theme Generator',
   'Некорректный архив темы. Экспортируйте его из TAB Theme Generator.':'Invalid theme archive. Export it from TAB Theme Generator.',
   'Архив темы превышает 64 МиБ.':'Theme archive exceeds 64 MiB.',

@@ -186,6 +186,8 @@ pub async fn start(hub: Arc<Hub>) -> Result<()> {
     let token = security::secret_get(&format!("{}/telegram", c.machine_id))?
         .ok_or_else(|| anyhow!("Сначала настройте Telegram"))?;
     let client = Client::new(token);
+    hub.revoke().await?;
+    hub.issue_pairing_code().await?;
     hub.db.put("telegram_autoconnect", "true".into()).await?;
     let cancel = CancellationToken::new();
     *stop = Some(cancel.clone());
@@ -224,7 +226,7 @@ fn retry_connection(e: &anyhow::Error) -> bool {
 pub async fn restore(hub: Arc<Hub>) -> Result<()> {
     let configured = {
         let c = hub.config.read().await;
-        c.telegram_user.is_some() && c.pin_hash.is_some()
+        c.telegram_user.is_some()
     };
     // Existing configured installations opt in; explicit Disconnect survives restarts.
     let enabled = hub.db.setting("telegram_autoconnect").await?.map(|s| s == "true").unwrap_or(configured);
@@ -437,12 +439,12 @@ async fn handle(
             .await;
     }
     let text = msg["text"].as_str().unwrap_or("");
-    if !cb.is_object()
+    if !cb.is_object() && !hub.authorized(user, false).await?
         && (text.starts_with("/pin ")
             || text.len() >= 4 && text.len() <= 6 && text.bytes().all(|c| c.is_ascii_digit()))
     {
         let pin = text.strip_prefix("/pin ").unwrap_or(text).trim();
-        let ok = hub.unlock(user, pin).await?;
+        let ok = hub.unlock(user, pin, msg["date"].as_i64().unwrap_or(0)).await?;
         let _ = client
             .call(
                 "deleteMessage",
@@ -452,7 +454,7 @@ async fn handle(
         if ok {
             return sessions(hub, chat).await;
         }
-        return say(hub, chat, "PIN неверен или временно заблокирован.", vec![]).await;
+        return say(hub, chat, "Код неверен, истёк или ввод временно заблокирован. Посмотрите новый PIN в TAB на ПК.", vec![]).await;
     }
     if !cb.is_object() && text == "/lock" {
         drafts.remove(&chat);
@@ -460,7 +462,7 @@ async fn handle(
         return say(hub, chat, "Доступ закрыт.", vec![]).await;
     }
     if !hub.authorized(user, true).await? {
-        return say(hub,chat,&format!("{} · введите PIN. Telegram не использует E2EE; сообщение с PIN удаляется по возможности.",c.machine_name),vec![]).await;
+        return say(hub,chat,&format!("{} · откройте TAB → Telegram на ПК и отправьте сюда показанный шестизначный PIN. Код одноразовый и действует 5 минут.",c.machine_name),vec![]).await;
     }
     if cb.is_object() {
         let data = cb["data"].as_str().unwrap_or("");
@@ -754,7 +756,6 @@ mod tests {
         {
             let mut c = hub.config.write().await;
             c.telegram_user = Some(1);
-            c.pin_hash = Some("configured".into());
         }
         hub.db.put("telegram_autoconnect", "true".into()).await.unwrap();
         stop(&hub).await.unwrap();

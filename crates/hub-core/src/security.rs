@@ -14,6 +14,10 @@ pub fn random_secret() -> String {
     rand::thread_rng().fill_bytes(&mut b);
     base64::engine::general_purpose::STANDARD.encode(b)
 }
+pub fn random_pairing_code() -> String {
+    use rand::Rng;
+    format!("{:06}", rand::rngs::OsRng.gen_range(0..1_000_000u32))
+}
 fn pin_bytes(pin: &str, pepper: &str) -> Vec<u8> {
     let mut h =
         Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("HMAC accepts arbitrary length");

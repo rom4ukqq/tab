@@ -56,7 +56,6 @@ pub struct Config {
     pub projects: Vec<Project>,
     pub telegram_user: Option<i64>,
     pub telegram_enabled: bool,
-    pub pin_hash: Option<String>,
     pub auth_epoch: String,
 }
 impl Default for Config {
@@ -68,7 +67,6 @@ impl Default for Config {
             projects: vec![],
             telegram_user: None,
             telegram_enabled: false,
-            pin_hash: None,
             auth_epoch: id(),
         }
     }
@@ -141,7 +139,12 @@ pub struct Interaction {
     pub state: String,
     pub local_only: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PairingCode {
+    pub code: String,
+    pub expires_at: i64,
+}
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub config: Config,
     pub sessions: Vec<Session>,
@@ -149,6 +152,7 @@ pub struct Snapshot {
     pub requests: Vec<Interaction>,
     pub telegram_status: String,
     pub telegram_active: bool,
+    pub pairing_code: Option<PairingCode>,
 }
 #[derive(Clone, Debug)]
 pub enum Control {

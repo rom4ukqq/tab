@@ -20,6 +20,15 @@ struct Active {
     control: mpsc::Sender<Control>,
     remote: bool,
 }
+struct PendingPairing {
+    code: zeroize::Zeroizing<String>,
+    hash: String,
+    pepper: zeroize::Zeroizing<String>,
+    issued_at: i64,
+    expires_at: i64,
+    deadline: std::time::Instant,
+    epoch: String,
+}
 pub struct Hub {
     pub db: Store,
     pub config: RwLock<Config>,
@@ -31,6 +40,7 @@ pub struct Hub {
     pub telegram_stop: Mutex<Option<CancellationToken>>,
     pub telegram_status: RwLock<String>,
     pub online_at: std::sync::atomic::AtomicI64,
+    pairing: Mutex<Option<PendingPairing>>,
 }
 impl Hub {
     pub async fn open(data_dir: PathBuf) -> Result<Arc<Self>> {
@@ -54,14 +64,14 @@ impl Hub {
             telegram_stop: Mutex::new(None),
             telegram_status: RwLock::new("Отключён".into()),
             online_at: std::sync::atomic::AtomicI64::new(0),
+            pairing: Mutex::new(None),
         }))
     }
     async fn persist_config(&self, c: &Config) -> Result<()> {
         self.db.put("config", serde_json::to_string(c)?).await
     }
     pub async fn snapshot(&self) -> Result<Snapshot> {
-        let mut config = self.config.read().await.clone();
-        config.pin_hash = config.pin_hash.map(|_| "configured".into());
+        let config = self.config.read().await.clone();
         let (sessions, turns, requests) = self
             .db
             .call(|c| {
@@ -100,6 +110,7 @@ impl Hub {
             requests,
             telegram_status: self.telegram_status.read().await.clone(),
             telegram_active: self.telegram_stop.lock().await.is_some(),
+            pairing_code: self.pairing_snapshot().await,
         })
     }
     pub async fn discover(&self) -> Result<Vec<Installation>> {
@@ -263,7 +274,6 @@ impl Hub {
         &self,
         mut token: String,
         user_id: i64,
-        mut pin: String,
     ) -> Result<()> {
         if self.telegram_stop.lock().await.is_some() {
             bail!("Сначала отключите Telegram и дождитесь завершения соединения")
@@ -274,19 +284,11 @@ impl Hub {
         let client = telegram::Client::new(token.clone());
         client.check().await?;
         let machine = self.config.read().await.machine_id.clone();
-        let pepper = security::secret_get(&format!("{machine}/pepper"))?
-            .unwrap_or_else(security::random_secret);
-        let p = pin.clone();
-        let pe = pepper.clone();
-        let hash = tokio::task::spawn_blocking(move || security::hash_pin(&p, &pe)).await??;
         security::secret_set(&format!("{machine}/telegram"), &token)?;
-        security::secret_set(&format!("{machine}/pepper"), &pepper)?;
         use zeroize::Zeroize;
         token.zeroize();
-        pin.zeroize();
         let mut c = self.config.write().await;
         c.telegram_user = Some(user_id);
-        c.pin_hash = Some(hash);
         c.auth_epoch = id();
         self.persist_config(&c).await?;
         drop(c);
@@ -295,25 +297,47 @@ impl Hub {
             .audit("telegram_configured", &user_id.to_string())
             .await
     }
-    pub async fn unlock(&self, user: i64, pin: &str) -> Result<bool> {
+    pub async fn pairing_snapshot(&self) -> Option<PairingCode> {
+        let mut pairing = self.pairing.lock().await;
+        if pairing.as_ref().is_some_and(|p| p.expires_at <= now() || p.deadline <= std::time::Instant::now()) { *pairing = None; }
+        pairing.as_ref().map(|p| PairingCode { code: p.code.to_string(), expires_at: p.expires_at })
+    }
+    // Local-only command. The code and pepper never enter persistent storage or bot messages.
+    pub async fn issue_pairing_code(&self) -> Result<()> {
+        let c = self.config.read().await.clone();
+        if c.telegram_user.is_none() { bail!("Configure Telegram first") }
+        let mut pending = self.pairing.lock().await;
+        let code = zeroize::Zeroizing::new(security::random_pairing_code());
+        let pepper = zeroize::Zeroizing::new(security::random_secret());
+        let p = code.clone(); let pe = pepper.clone();
+        let hash = tokio::task::spawn_blocking(move || security::hash_pin(&p, &pe)).await??;
+        let issued_at = now();
+        *pending = Some(PendingPairing { code, hash, pepper, issued_at, expires_at: issued_at + 300, deadline: std::time::Instant::now() + std::time::Duration::from_secs(300), epoch: c.auth_epoch });
+        Ok(())
+    }
+    pub async fn unlock(&self, user: i64, pin: &str, sent_at: i64) -> Result<bool> {
         let c = self.config.read().await.clone();
         if c.telegram_user != Some(user) {
             return Ok(false);
         }
-        let Some(hash) = c.pin_hash else {
-            return Ok(false);
-        };
-        let pepper = security::secret_get(&format!("{}/pepper", c.machine_id))?
-            .ok_or_else(|| anyhow!("PIN pepper отсутствует"))?;
-        let pin = pin.to_string();
-        self.db.call(move|db|{
+        // Hold this guard until commit + consume, serializing verification, renewal and revoke.
+        let mut pending = self.pairing.lock().await;
+        let Some(p) = pending.as_ref() else { return Ok(false) };
+        if p.expires_at <= now() || p.deadline <= std::time::Instant::now() { *pending = None; return Ok(false) }
+        if p.epoch != c.auth_epoch || sent_at < p.issued_at || sent_at > now() + 30 { return Ok(false) }
+        let hash = p.hash.clone(); let pepper = p.pepper.clone();
+        let expires_at = p.expires_at; let deadline = p.deadline;
+        let pin = zeroize::Zeroizing::new(pin.to_string());
+        let accepted = self.db.call(move|db|{
             let ts=now();let tx=db.transaction()?;
             let(failures,window,blocked,strikes)=tx.query_row("SELECT failures,window_at,blocked_until,strikes FROM attempts WHERE user_id=?1",[user],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?))).optional()?.unwrap_or((0,ts,0,0));
-            if blocked>ts{return Ok(false)}
-            if security::verify_pin(&pin,&pepper,&hash){tx.execute("INSERT OR REPLACE INTO grants VALUES(?1,?2,?3,?4)",params![user,c.auth_epoch,ts,ts+8*3600])?;tx.execute("DELETE FROM attempts WHERE user_id=?1",[user])?;tx.commit()?;return Ok(true)}
+            if blocked>ts || expires_at<=ts || deadline<=std::time::Instant::now(){return Ok(false)}
+            if security::verify_pin(&pin,&pepper,&hash){if expires_at<=now() || deadline<=std::time::Instant::now(){return Ok(false)}tx.execute("INSERT OR REPLACE INTO grants VALUES(?1,?2,?3,?4)",params![user,c.auth_epoch,ts,ts+8*3600])?;tx.execute("DELETE FROM attempts WHERE user_id=?1",[user])?;tx.commit()?;return Ok(true)}
             let failures=if ts-window>900{1}else{failures+1};let window=if ts-window>900{ts}else{window};let strikes=if failures>=5{strikes+1}else{strikes};let blocked=if failures>=5{ts+(900*(1i64<<(strikes-1).min(7))).min(86400)}else{0};
             tx.execute("INSERT OR REPLACE INTO attempts VALUES(?1,?2,?3,?4,?5)",params![user,failures,window,blocked,strikes])?;tx.commit()?;Ok(false)
-        }).await
+        }).await?;
+        if accepted { *pending = None; }
+        Ok(accepted)
     }
     pub async fn authorized(&self, user: i64, touch: bool) -> Result<bool> {
         let c = self.config.read().await.clone();
@@ -350,6 +374,8 @@ impl Hub {
             .await
     }
     pub async fn revoke(&self) -> Result<()> {
+        let mut pending = self.pairing.lock().await;
+        *pending = None;
         self.db
             .call(|c| {
                 c.execute("DELETE FROM grants", [])?;
@@ -842,6 +868,72 @@ impl Hub {
 }
 
 struct AbortTask(tokio::task::AbortHandle);
+#[cfg(test)]
+mod pairing_tests {
+    use super::*;
+
+    async fn configured(path: PathBuf) -> Arc<Hub> {
+        let hub = Hub::open(path).await.unwrap();
+        let mut config = hub.config.write().await;
+        config.telegram_user = Some(42);
+        hub.persist_config(&config).await.unwrap();
+        drop(config);
+        hub.issue_pairing_code().await.unwrap();
+        hub
+    }
+
+    #[tokio::test]
+    async fn pairing_is_random_shaped_local_and_consumed_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = configured(dir.path().join("data")).await;
+        let code = hub.pairing_snapshot().await.unwrap().code;
+        assert_eq!(code.len(), 6);
+        assert!(code.bytes().all(|b| b.is_ascii_digit()));
+        let (a,b) = tokio::join!(hub.unlock(42, &code, now()), hub.unlock(42, &code, now()));
+        assert_ne!(a.unwrap(), b.unwrap());
+        assert!(hub.pairing_snapshot().await.is_none());
+        assert!(hub.authorized(42, false).await.unwrap());
+        let config = hub.db.setting("config").await.unwrap().unwrap();
+        assert!(!config.contains("pin_hash"));
+        assert!(!config.contains("pairing_code"));
+        let outbox: i64 = hub.db.call(|db| Ok(db.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?)).await.unwrap();
+        assert_eq!(outbox, 0);
+    }
+
+    #[tokio::test]
+    async fn pairing_rejects_other_user_stale_message_expiry_and_revoke() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub = configured(dir.path().join("data")).await;
+        let code = hub.pairing_snapshot().await.unwrap().code;
+        assert!(!hub.unlock(7, &code, now()).await.unwrap());
+        assert!(!hub.unlock(42, &code, now()-60).await.unwrap());
+        hub.pairing.lock().await.as_mut().unwrap().expires_at = now()-1;
+        assert!(!hub.unlock(42, &code, now()).await.unwrap());
+        assert!(hub.pairing_snapshot().await.is_none());
+        hub.issue_pairing_code().await.unwrap();
+        let code = hub.pairing_snapshot().await.unwrap().code;
+        hub.revoke().await.unwrap();
+        assert!(!hub.unlock(42, &code, now()).await.unwrap());
+        assert!(!hub.authorized(42, false).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn pairing_lockout_survives_new_code_and_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data");
+        let hub = configured(path.clone()).await;
+        for _ in 0..5 { assert!(!hub.unlock(42, "invalid", now()).await.unwrap()); }
+        hub.issue_pairing_code().await.unwrap();
+        let code = hub.pairing_snapshot().await.unwrap().code;
+        assert!(!hub.unlock(42, &code, now()).await.unwrap());
+        drop(hub);
+        let hub = Hub::open(path).await.unwrap();
+        assert!(hub.pairing_snapshot().await.is_none());
+        hub.issue_pairing_code().await.unwrap();
+        let code = hub.pairing_snapshot().await.unwrap().code;
+        assert!(!hub.unlock(42, &code, now()).await.unwrap());
+    }
+}
 impl Drop for AbortTask {
     fn drop(&mut self) {
         self.0.abort();

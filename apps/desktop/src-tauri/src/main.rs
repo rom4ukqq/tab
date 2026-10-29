@@ -101,8 +101,14 @@ async fn audit(h: H<'_>) -> R<Vec<Value>> {
     h.audit_rows().await.map_err(err)
 }
 #[tauri::command]
-async fn configure_telegram(h: H<'_>, token: String, user_id: i64, pin: String) -> R<()> {
-    h.setup_telegram(token, user_id, pin).await.map_err(err)
+async fn configure_telegram(h: H<'_>, token: String, user_id: i64) -> R<()> {
+    h.setup_telegram(token, user_id).await.map_err(err)
+}
+#[tauri::command]
+async fn refresh_pairing_code(h: H<'_>) -> R<()> {
+    let connection = h.telegram_stop.lock().await;
+    if connection.is_none() { return Err("Connect Telegram first".into()); }
+    h.issue_pairing_code().await.map_err(err)
 }
 #[tauri::command]
 async fn connect_telegram(h: H<'_>) -> R<()> {
@@ -281,6 +287,7 @@ fn main() {
             export_log,
             audit,
             configure_telegram,
+            refresh_pairing_code,
             connect_telegram,
             disconnect_telegram,
             revoke_access,

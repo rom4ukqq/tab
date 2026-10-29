@@ -20,7 +20,7 @@ type Asset = { id: string; name: string; path: string; mime: string; bytes: numb
 type Turn = { id: string; session_id: string; state: string; text: string; created_at: number };
 type Request = { id: string; turn_id: string; session_id: string; kind: string; data: Record<string, any>; local_only: boolean; expires_at: number };
 type Event = { event_id: string; session_id: string; turn_id: string; sequence: number; kind: string; data: Record<string, any> };
-type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number; pin_hash?: string }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string; telegram_active: boolean };
+type Snapshot = { config: { machine_name: string; installations: Agent[]; projects: Project[]; telegram_user?: number }; sessions: Session[]; turns: Turn[]; requests: Request[]; telegram_status: string; telegram_active: boolean; pairing_code?: { code: string; expires_at: number } };
 const pages = ['Агенты', 'Telegram', 'Настройки'];
 const active = (t: Turn) => ['running', 'queued', 'dispatching'].includes(t.state);
 const names: Record<string, string> = { running: 'В работе', queued: 'В очереди', completed: 'Завершено', cancelled: 'Отменено', interrupted: 'Прервано', failed: 'Ошибка', unknown: 'Результат неизвестен' };
@@ -70,13 +70,12 @@ function App() {
   }, []);
   useEffect(() => { localStorage.setItem('agent-hub-background', background); }, [background]);
   useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
-  const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
+  const [token, setToken] = useState(''), [user, setUser] = useState('');
   const numericUser = user.trim();
   const userIdError = !numericUser ? t("Введите ваш числовой Telegram ID.") :
     !/^\d+$/.test(numericUser) || !Number.isSafeInteger(Number(numericUser)) || Number(numericUser) <= 0 ?
       t("Нужен числовой ID, например 123456789. Имя пользователя или @username не подходит.") : '';
-  const pinError = !/^\d{4,6}$/.test(pin) ? t("PIN должен содержать от 4 до 6 цифр.") : '';
-  const telegramFormError = !token.trim() ? t("Введите bot token из BotFather.") : userIdError || pinError;
+  const telegramFormError = !token.trim() ? t("Введите bot token из BotFather.") : userIdError;
   const [audit, setAudit] = useState<any[]>([]), [autostart, setAutostart] = useState(false);
   const refresh = useCallback(async () => setSnap(await invoke<Snapshot>('snapshot')), []);
   const run = async (fn: () => Promise<unknown>) => {
@@ -115,16 +114,19 @@ function App() {
         </>}
         {page === 'Telegram' && <>
           <div className="card">
-            <div className="row"><h2 className="grow">{t("Подключение бота")}</h2><Button appearance={snap.telegram_active ? 'secondary' : 'primary'} disabled={busy || (!snap.telegram_active && !snap.config.pin_hash) || snap.telegram_status === 'Отключается'} onClick={() => command(snap.telegram_active ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? t("Отключение…") : snap.telegram_active ? t("Отключить") : t("Подключить")}</Button></div>
+            <div className="row"><h2 className="grow">{t("Подключение бота")}</h2><Button appearance={snap.telegram_active ? 'secondary' : 'primary'} disabled={busy || (!snap.telegram_active && !snap.config.telegram_user) || snap.telegram_status === 'Отключается'} onClick={() => command(snap.telegram_active ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? t("Отключение…") : snap.telegram_active ? t("Отключить") : t("Подключить")}</Button></div>
+            {snap.telegram_active && <div className="pairing-code">
+              {snap.pairing_code ? <><span>{t('Отправьте этот PIN боту в Telegram')}</span><strong>{snap.pairing_code.code}</strong><span className="muted">{t('Одноразовый код · до')}{' '}{new Date(snap.pairing_code.expires_at * 1000).toLocaleTimeString(language)}</span></> : <span className="muted">{t('Для нового подтверждения получите PIN и отправьте его боту.')}</span>}
+              <Button appearance="subtle" disabled={busy || snap.telegram_status === 'Отключается'} onClick={() => command('refresh_pairing_code')}>{t('Новый PIN')}</Button>
+            </div>}
             <p>{t("Используйте отдельного бота из BotFather. Одновременно с TAB у него не должно быть другого Telegram-моста.")}</p>
             <div className="form-grid">
               <Field label="Bot token"><Input type="password" autoComplete="off" value={token} onChange={(_, d) => setToken(d.value)}/></Field>
               <Field label={t("Ваш числовой Telegram ID")} hint={t("Узнать свой ID: откройте @userinfobot в Telegram и нажмите Start. Скопируйте число из строки Id.")} validationState={user && userIdError ? 'error' : 'none'} validationMessage={user ? userIdError : undefined}><Input inputMode="numeric" value={user} placeholder={t("Например, 123456789")} onChange={(_, d) => setUser(d.value)}/></Field>
-              <Field label={t("PIN · рекомендуется 6 цифр")} validationState={pin && pinError ? 'error' : 'none'} validationMessage={pin ? pinError : undefined}><Input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin} onChange={(_, d) => setPin(d.value)}/></Field>
             </div>
             <Button appearance="primary" disabled={busy || !!telegramFormError} onClick={() => run(async () => {
               if (telegramFormError) throw new Error(telegramFormError);
-              await invoke('configure_telegram', { token: token.trim(), userId: Number(numericUser), pin }); setToken(''); setPin(''); setNotice(t("Настройки сохранены. Теперь подключите бота."));
+              await invoke('configure_telegram', { token: token.trim(), userId: Number(numericUser) }); setToken(''); setNotice(t("Настройки сохранены. Теперь подключите бота."));
             })}>{t("Сохранить подключение")}</Button>
             {!busy && telegramFormError && <p role="status">{t("Чтобы сохранить:")}{' '}{telegramFormError}</p>}
             <p className="muted">{t("Bot token хранится в Windows Credential Manager. Принимаются сообщения только от указанного User ID в личном чате.")}</p>
