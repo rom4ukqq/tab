@@ -9,6 +9,7 @@ import './glass.css';
 import { ThemeBackdrop, backgroundThemes, validBackground, BackgroundTheme } from './ThemeBackdrop';
 import { AgentIcon, agentNames } from './AgentIcon';
 import { AccentPicker, accentColors, defaultAccent, validAccent } from './AccentPicker';
+import { LanguageProvider, useLanguage, useT } from './i18n';
 
 type Provider = 'codex' | 'claude' | 'omp' | 'mock';
 type Agent = { provider: Provider; executable: string; version: string; enabled: boolean; accept_unsandboxed: boolean };
@@ -26,6 +27,9 @@ function NavIcon({ index }: { index: number }) {
   return <svg className="nav-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{index === 0 ? <><rect x="4" y="7" width="16" height="13" rx="4"/><path d="M12 3v4M8 12v2m8-2v2M9 17h6"/></> : index === 1 ? <><path d="m3 10 18-7-5 18-5-7-8-4Z"/><path d="m11 14 10-11"/></> : <><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></>}</svg>;
 }
 function App() {
+  const t = useT();
+  const { language, setLanguage } = useLanguage();
+  useEffect(() => { invoke('set_ui_language', { language }).catch(e => setError(String(e))); }, [language]);
   const [page, setPage] = useState('Агенты'), [snap, setSnap] = useState<Snapshot>();
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
@@ -52,11 +56,11 @@ function App() {
   useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
   const numericUser = user.trim();
-  const userIdError = !numericUser ? 'Введите ваш числовой Telegram ID.' :
+  const userIdError = !numericUser ? t("Введите ваш числовой Telegram ID.") :
     !/^\d+$/.test(numericUser) || !Number.isSafeInteger(Number(numericUser)) || Number(numericUser) <= 0 ?
-      'Нужен числовой ID, например 123456789. Имя пользователя или @username не подходит.' : '';
-  const pinError = !/^\d{4,6}$/.test(pin) ? 'PIN должен содержать от 4 до 6 цифр.' : '';
-  const telegramFormError = !token.trim() ? 'Введите bot token из BotFather.' : userIdError || pinError;
+      t("Нужен числовой ID, например 123456789. Имя пользователя или @username не подходит.") : '';
+  const pinError = !/^\d{4,6}$/.test(pin) ? t("PIN должен содержать от 4 до 6 цифр.") : '';
+  const telegramFormError = !token.trim() ? t("Введите bot token из BotFather.") : userIdError || pinError;
   const [audit, setAudit] = useState<any[]>([]), [autostart, setAutostart] = useState(false);
   const refresh = useCallback(async () => setSnap(await invoke<Snapshot>('snapshot')), []);
   const run = async (fn: () => Promise<unknown>) => {
@@ -78,83 +82,87 @@ function App() {
     <ThemeBackdrop selected={background} animate={animateBackground} onError={setError}/>
     <aside>
       <div className="brand" title="Telegram Agents Bridge"><span className="brand-mark" aria-hidden="true"/><div>TAB</div></div>
-      <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>
-      <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? 'Этот компьютер'}<small>{snap?.telegram_status ?? 'Запуск…'}</small><small>Активных задач: {snap?.turns.filter(active).length ?? 0}</small></div>
+      <nav aria-label={t("Основная навигация")}>{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{t(p)}</button>)}</nav>
+      <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? t("Этот компьютер")}<small>{t(snap?.telegram_status ?? 'Запуск…')}</small><small>{t("Активных задач:")}{' '}{snap?.turns.filter(active).length ?? 0}</small></div>
     </aside>
     <main>
-      <header><div><div className="eyebrow">TAB / {page}</div><h1>{page}</h1></div></header>
-      {error && <div className="banner error" role="alert">{error}<Button appearance="subtle" onClick={() => setError('')}>Закрыть</Button></div>}
-      {notice && <div className="banner" role="status">{notice}</div>}
-      {!snap ? <Spinner label="Открываем локальную базу…"/> : <>
+      <header><div><div className="eyebrow">TAB / {t(page)}</div><h1>{t(page)}</h1></div></header>
+      {error && <div className="banner error" role="alert">{t(error)}<Button appearance="subtle" onClick={() => setError('')}>{t("Закрыть")}</Button></div>}
+      {notice && <div className="banner" role="status">{t(notice)}</div>}
+      {!snap ? <Spinner label={t("Открываем локальную базу…")}/> : <>
         <Requests requests={snap.requests} act={command}/>
         {page === 'Агенты' && <>
-          <div className="intro"><h2>Подключите ваши CLI-агенты</h2><p>Отметьте агентов, к которым будет доступ через Telegram.</p></div>
-          <div className="section-heading"><span>Агенты на этом компьютере</span><Button appearance="primary" disabled={busy} onClick={() => command('discover')}>Найти агенты</Button></div>
-          {!snap.config.installations.length && <Empty title="Агенты ещё не найдены" text="Установите и авторизуйте Codex, Claude Code или OMP, затем нажмите «Найти агенты»."/>}
+          <div className="intro"><h2>{t("Подключите ваши CLI-агенты")}</h2><p>{t("Отметьте агентов, к которым будет доступ через Telegram.")}</p></div>
+          <div className="section-heading"><span>{t("Агенты на этом компьютере")}</span><Button appearance="primary" disabled={busy} onClick={() => command('discover')}>{t("Найти агенты")}</Button></div>
+          {!snap.config.installations.length && <Empty title={t("Агенты ещё не найдены")} text={t("Установите и авторизуйте Codex, Claude Code или OMP, затем нажмите «Найти агенты».")}/>}
           {snap.config.installations.map(a => <AgentCard key={a.provider} agent={a} busy={busy} act={command}/>)}
         </>}
         {page === 'Telegram' && <>
           <div className="card">
-            <div className="row"><h2 className="grow">Подключение бота</h2><Badge appearance="tint">{snap.telegram_status}</Badge><Button appearance={snap.telegram_active ? 'secondary' : 'primary'} disabled={busy || (!snap.telegram_active && !snap.config.pin_hash) || snap.telegram_status === 'Отключается'} onClick={() => command(snap.telegram_active ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? 'Отключение…' : snap.telegram_active ? 'Отключить' : 'Подключить'}</Button></div>
-            <p>Используйте отдельного бота из BotFather. Одновременно с TAB у него не должно быть другого Telegram-моста.</p>
+            <div className="row"><h2 className="grow">{t("Подключение бота")}</h2><Button appearance={snap.telegram_active ? 'secondary' : 'primary'} disabled={busy || (!snap.telegram_active && !snap.config.pin_hash) || snap.telegram_status === 'Отключается'} onClick={() => command(snap.telegram_active ? 'disconnect_telegram' : 'connect_telegram')}>{snap.telegram_status === 'Отключается' ? t("Отключение…") : snap.telegram_active ? t("Отключить") : t("Подключить")}</Button></div>
+            <p>{t("Используйте отдельного бота из BotFather. Одновременно с TAB у него не должно быть другого Telegram-моста.")}</p>
             <div className="form-grid">
               <Field label="Bot token"><Input type="password" autoComplete="off" value={token} onChange={(_, d) => setToken(d.value)}/></Field>
-              <Field label="Ваш числовой Telegram ID" hint="Узнать свой ID: откройте @userinfobot в Telegram и нажмите Start. Скопируйте число из строки Id." validationState={user && userIdError ? 'error' : 'none'} validationMessage={user ? userIdError : undefined}><Input inputMode="numeric" value={user} placeholder="Например, 123456789" onChange={(_, d) => setUser(d.value)}/></Field>
-              <Field label="PIN · рекомендуется 6 цифр" validationState={pin && pinError ? 'error' : 'none'} validationMessage={pin ? pinError : undefined}><Input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin} onChange={(_, d) => setPin(d.value)}/></Field>
+              <Field label={t("Ваш числовой Telegram ID")} hint={t("Узнать свой ID: откройте @userinfobot в Telegram и нажмите Start. Скопируйте число из строки Id.")} validationState={user && userIdError ? 'error' : 'none'} validationMessage={user ? userIdError : undefined}><Input inputMode="numeric" value={user} placeholder={t("Например, 123456789")} onChange={(_, d) => setUser(d.value)}/></Field>
+              <Field label={t("PIN · рекомендуется 6 цифр")} validationState={pin && pinError ? 'error' : 'none'} validationMessage={pin ? pinError : undefined}><Input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin} onChange={(_, d) => setPin(d.value)}/></Field>
             </div>
             <Button appearance="primary" disabled={busy || !!telegramFormError} onClick={() => run(async () => {
               if (telegramFormError) throw new Error(telegramFormError);
-              await invoke('configure_telegram', { token: token.trim(), userId: Number(numericUser), pin }); setToken(''); setPin(''); setNotice('Настройки сохранены. Теперь подключите бота.');
-            })}>Сохранить подключение</Button>
-            {!busy && telegramFormError && <p role="status">Чтобы сохранить: {telegramFormError}</p>}
-            <p className="muted">Bot token хранится в Windows Credential Manager. Принимаются сообщения только от указанного User ID в личном чате.</p>
+              await invoke('configure_telegram', { token: token.trim(), userId: Number(numericUser), pin }); setToken(''); setPin(''); setNotice(t("Настройки сохранены. Теперь подключите бота."));
+            })}>{t("Сохранить подключение")}</Button>
+            {!busy && telegramFormError && <p role="status">{t("Чтобы сохранить:")}{' '}{telegramFormError}</p>}
+            <p className="muted">{t("Bot token хранится в Windows Credential Manager. Принимаются сообщения только от указанного User ID в личном чате.")}</p>
           </div>
-          <p className="muted">Telegram cloud chat не использует E2EE. PIN удаляется из чата по возможности; это дополнительный барьер доступа.</p>
+          <p className="muted">{t("Telegram cloud chat не использует E2EE. PIN удаляется из чата по возможности; это дополнительный барьер доступа.")}</p>
         </>}
         {page === 'Настройки' && <>
-          <div className="card"><h2>Приложение</h2>
-            <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label="Запускать в трее при входе в Windows"/></div>
-            <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label="Тёмная тема"/></div>
+          <div className="card"><h2>{t("Приложение")}</h2>
+            <Field label={t('Язык')}><Dropdown aria-label="Language" className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={language === 'en' ? 'English' : 'Русский'} selectedOptions={[language]} onOptionSelect={(_,d) => { if(d.optionValue === 'en' || d.optionValue === 'ru') setLanguage(d.optionValue); }}><Option value="en">English</Option><Option value="ru">Русский</Option></Dropdown></Field>
+            <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label={t("Запускать в трее при входе в Windows")}/></div>
+            <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label={t("Тёмная тема")}/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
-            <Field label="Фон"><Dropdown aria-label="Фон" className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={background === 'pr0n' ? 'Developer theme' : backgroundThemes.find(t => t.id === background)?.name} selectedOptions={[background]} onOptionSelect={(_, d) => { if (validBackground(d.optionValue ?? null) && d.optionValue !== 'pr0n') setBackground(d.optionValue as BackgroundTheme); }}>{backgroundThemes.filter(t => t.id !== 'pr0n').map(t => <Option key={t.id} value={t.id}>{t.name}</Option>)}</Dropdown></Field>
-            <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация фона"/></div>
-            <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.</p>
+            <Field label={t("Фон")}><Dropdown aria-label={t("Фон")} className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={background === 'pr0n' ? 'Developer theme' : t(backgroundThemes.find(item => item.id === background)?.name ?? '')} selectedOptions={[background]} onOptionSelect={(_, d) => { if (validBackground(d.optionValue ?? null) && d.optionValue !== 'pr0n') setBackground(d.optionValue as BackgroundTheme); }}>{backgroundThemes.filter(t => t.id !== 'pr0n').map(item => <Option key={item.id} value={item.id}>{t(item.name)}</Option>)}</Dropdown></Field>
+            <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label={t("Анимация фона")}/></div>
+            <p className="muted">{t("Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.")}</p>
           </div>
           {developer && <div className="card"><h2>Developer Settings</h2>
-            <Field label="Иконка трея"><select value={trayIcon} onChange={e => { const value = e.target.value; if (value === 'star' || value === 'face') setTrayIcon(value); }}><option value="star">*</option><option value="face">:3</option></select></Field>
-            <Field label="Секретные фоны"><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value)) setBackground(value); }}>{backgroundThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
-            <Button onClick={() => { setDeveloper(false); if (background === 'pr0n') setBackground('matrix'); }}>Скрыть Developer Settings</Button>
+            <Field label={t("Иконка трея")}><select value={trayIcon} onChange={e => { const value = e.target.value; if (value === 'star' || value === 'face') setTrayIcon(value); }}><option value="star">*</option><option value="face">:3</option></select></Field>
+            <Field label={t("Секретные фоны")}><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value)) setBackground(value); }}>{backgroundThemes.map(item => <option key={item.id} value={item.id}>{t(item.name)}</option>)}</select></Field>
+            <Button onClick={() => { setDeveloper(false); if (background === 'pr0n') setBackground('matrix'); }}>{t("Скрыть Developer Settings")}</Button>
           </div>}
-          <details className="card"><summary>Безопасность и журнал</summary><p>Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.</p>
-            <div className="row"><Button onClick={() => command('revoke_access')}>Отозвать доступ</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>Показать аудит</Button></div>
-            {audit.map((a, i) => <div className="audit" key={i}><time>{new Date(a.at * 1000).toLocaleString()}</time><strong>{a.action}</strong><code>{a.target}</code></div>)}
+          <details className="card"><summary>{t("Безопасность и журнал")}</summary><p>{t("Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.")}</p>
+            <div className="row"><Button onClick={() => command('revoke_access')}>{t("Отозвать доступ")}</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>{t("Показать аудит")}</Button></div>
+            {audit.map((a, i) => <div className="audit" key={i}><time>{new Date(a.at * 1000).toLocaleString(language)}</time><strong>{a.action}</strong><code>{a.target}</code></div>)}
           </details>
-          <details className="card"><summary>О сборке</summary><p>TAB — Telegram Agents Bridge 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.</p><p>Данные: %LOCALAPPDATA%\AgentHub (сохранены при переименовании). Multi-PC, голос, Computer Use и подписанные обновления пока не включены.</p></details>
+          <details className="card"><summary>{t("О сборке")}</summary><p>{t("TAB — Telegram Agents Bridge 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.")}</p><p>{t("Данные: %LOCALAPPDATA%\\AgentHub (сохранены при переименовании). Multi-PC, голос, Computer Use и подписанные обновления пока не включены.")}</p></details>
         </>}
       </>}
     </main>
   </div></FluentProvider>;
 }
-function Empty({ title, text }: { title: string; text: string }) { return <div className="empty"><h3>{title}</h3><p>{text}</p></div>; }
+function Empty({ title, text }: { title: string; text: string }) { const t = useT(); return <div className="empty"><h3>{t(title)}</h3><p>{t(text)}</p></div>; }
 function AgentCard({ agent: a, busy, act }: { agent: Agent; busy: boolean; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) {
+  const t = useT();
   const [accept, setAccept] = useState(a.accept_unsandboxed);
-  const name = agentNames[a.provider] ?? a.provider;
+  const name = t(agentNames[a.provider] ?? a.provider);
   const needsConsent = !a.enabled && a.provider !== 'codex' && !accept;
   return <div className="card">
     <div className="row">
       <div className="agent-heading grow"><AgentIcon provider={a.provider}/><h2>{name}</h2></div>
-      <Switch checked={a.enabled} disabled={busy || needsConsent} aria-label={`Доступ к ${name}`} title={needsConsent ? 'Сначала разрешите запуск без OS sandbox ниже' : `Доступ к ${name}`} onChange={(_, d) => act('enable_agent', { provider: a.provider, enabled: d.checked, acceptUnsandboxed: accept })}/>
+      <Switch checked={a.enabled} disabled={busy || needsConsent} aria-label={`${t('Доступ к')} ${name}`} title={needsConsent ? t("Сначала разрешите запуск без OS sandbox ниже") : `${t('Доступ к')} ${name}`} onChange={(_, d) => act('enable_agent', { provider: a.provider, enabled: d.checked, acceptUnsandboxed: accept })}/>
     </div>
     <p>{a.version}</p><code>{a.executable}</code>
-    <p>{a.provider === 'codex' ? 'App-server · workspace-write · approvals on-request · steering' : a.provider === 'claude' ? 'Stream JSON · permissions manual · сообщения в очередь' : 'RPC UI v1 · steering · native dialogs подтверждаются на ПК'}</p>
-    {a.provider !== 'codex' && <Switch checked={accept} disabled={busy} onChange={(_, d) => setAccept(d.checked)} label="Разрешаю запуск без подтверждённой OS sandbox"/>}
-    <div className="row"><small>Runtime qualification: ещё не выполнена</small></div>
+    <p>{a.provider === 'codex' ? 'App-server · workspace-write · approvals on-request · steering' : a.provider === 'claude' ? t("Stream JSON · permissions manual · сообщения в очередь") : t("RPC UI v1 · steering · native dialogs подтверждаются на ПК")}</p>
+    {a.provider !== 'codex' && <Switch checked={accept} disabled={busy} onChange={(_, d) => setAccept(d.checked)} label={t("Разрешаю запуск без подтверждённой OS sandbox")}/>}
+    <div className="row"><small>{t("Runtime qualification: ещё не выполнена")}</small></div>
   </div>;
 }
 function Requests({ requests, act }: { requests: Request[]; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) { return <>{requests.map(r => <RequestCard key={r.id} r={r} act={act}/>)}</>; }
 function RequestCard({ r, act }: { r: Request; act: (n: string, args?: Record<string, unknown>) => Promise<void> }) {
+  const t = useT();
+  const { language } = useLanguage();
   const questions: any[] = r.data.params?.questions ?? r.data.input?.questions ?? []; const [answers, setAnswers] = useState<Record<string, string>>({}), [value, setValue] = useState('');
   const payload = () => { if (r.kind === 'native_dialog') return value; const result: Record<string, unknown> = {}; questions.forEach(q => { const key = q.id ?? q.question; const v = answers[key] ?? ''; result[key] = r.data.method ? { answers: [v] } : v; }); return result; };
-  return <div className="card request"><div className="row"><h3 className="grow">{r.kind === 'question' ? 'Вопрос агента' : r.kind === 'native_dialog' ? 'Native dialog · локально' : 'Требуется решение'}</h3><Badge color="warning">До {new Date(r.expires_at * 1000).toLocaleTimeString()}</Badge></div><pre>{JSON.stringify(r.data, null, 2)}</pre>{questions.map((q, i) => { const key = q.id ?? q.question; return <Field key={i} label={q.question ?? q.header ?? q.id}><Input value={answers[key] ?? ''} onChange={(_, d) => setAnswers(a => ({ ...a, [key]: d.value }))}/>{q.options?.length > 0 && <div className="row">{q.options.map((o: any, j: number) => <Button key={j} size="small" onClick={() => setAnswers(a => ({ ...a, [key]: o.label ?? o }))}>{o.label ?? String(o)}</Button>)}</div>}</Field>; })}{r.kind === 'native_dialog' && <Field label="Значение ответа / пункт native select"><Input value={value} onChange={(_, d) => setValue(d.value)}/></Field>}<div className="row"><Button appearance="primary" disabled={r.kind === 'unsupported'} onClick={() => act('answer_request', { requestId: r.id, decision: 'allow', answers: payload() })}>{r.kind === 'question' ? 'Ответить' : 'Разрешить один раз'}</Button><Button disabled={r.kind === 'unsupported'} onClick={() => act('answer_request', { requestId: r.id, decision: 'deny', answers: {} })}>Отказать</Button><Button onClick={() => act('cancel_turn', { turnId: r.turn_id })}>Остановить задачу</Button></div></div>;
+  return <div className="card request"><div className="row"><h3 className="grow">{r.kind === 'question' ? t("Вопрос агента") : r.kind === 'native_dialog' ? t("Native dialog · локально") : t("Требуется решение")}</h3><Badge color="warning">{t("До")}{' '}{new Date(r.expires_at * 1000).toLocaleTimeString(language)}</Badge></div><pre>{JSON.stringify(r.data, null, 2)}</pre>{questions.map((q, i) => { const key = q.id ?? q.question; return <Field key={i} label={q.question ?? q.header ?? q.id}><Input value={answers[key] ?? ''} onChange={(_, d) => setAnswers(a => ({ ...a, [key]: d.value }))}/>{q.options?.length > 0 && <div className="row">{q.options.map((o: any, j: number) => <Button key={j} size="small" onClick={() => setAnswers(a => ({ ...a, [key]: o.label ?? o }))}>{o.label ?? String(o)}</Button>)}</div>}</Field>; })}{r.kind === 'native_dialog' && <Field label={t("Значение ответа / пункт native select")}><Input value={value} onChange={(_, d) => setValue(d.value)}/></Field>}<div className="row"><Button appearance="primary" disabled={r.kind === 'unsupported'} onClick={() => act('answer_request', { requestId: r.id, decision: 'allow', answers: payload() })}>{r.kind === 'question' ? t("Ответить") : t("Разрешить один раз")}</Button><Button disabled={r.kind === 'unsupported'} onClick={() => act('answer_request', { requestId: r.id, decision: 'deny', answers: {} })}>{t("Отказать")}</Button><Button onClick={() => act('cancel_turn', { turnId: r.turn_id })}>{t("Остановить задачу")}</Button></div></div>;
 }
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><LanguageProvider><App/></LanguageProvider></React.StrictMode>);

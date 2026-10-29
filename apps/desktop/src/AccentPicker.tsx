@@ -1,4 +1,5 @@
 import React from 'react';
+import { useT } from './i18n';
 
 export const defaultAccent = '#FECA17';
 export const validAccent = (value: string | null): value is string => !!value && /^#[0-9a-f]{6}$/i.test(value);
@@ -20,16 +21,16 @@ export function accentColors(hex: string, dark: boolean) {
 }
 
 export function AccentPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const t = useT();
   return <fieldset className="accent-picker">
-    <legend>Акцентный цвет</legend>
+    <legend>{t("Акцентный цвет")}</legend>
     <div className="accent-options">
       {choices.map(([name, color]) => <button type="button" className="accent-swatch" key={color}
-        style={{ backgroundColor: color }} aria-label={name} title={name}
+        style={{ backgroundColor: color }} aria-label={t(name)} title={t(name)}
         aria-pressed={value.toUpperCase() === color} onClick={() => onChange(color)}/>) }
-      <label className="accent-custom">Свой цвет
-        <span className="custom-color-chip" style={{ backgroundColor: value }}><input type="color" value={value} aria-label="Выбрать свой акцентный цвет" onChange={e => { if (validAccent(e.target.value)) onChange(e.target.value.toUpperCase()); }}/></span>
+      <label className="accent-custom">{t("Свой цвет")}{' '}<span className="custom-color-chip" style={{ backgroundColor: value }}><input type="color" value={value} aria-label={t("Выбрать свой акцентный цвет")} onChange={e => { if (validAccent(e.target.value)) onChange(e.target.value.toUpperCase()); }}/></span>
       </label>
-      <output aria-label="Текущий цвет">{value.toUpperCase()}</output>
+      <output aria-label={t("Текущий цвет")}>{value.toUpperCase()}</output>
     </div>
   </fieldset>;
 }

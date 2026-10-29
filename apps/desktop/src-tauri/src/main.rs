@@ -162,6 +162,21 @@ fn set_tray_icon(app: tauri::AppHandle, kind: String) -> R<()> {
     tray.set_icon(Some(tauri::image::Image::new_owned(bytes.to_vec(), 32, 32))).map_err(err)
 }
 
+fn tray_menu(app: &tauri::AppHandle, language: &str) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem};
+    let ru = language == "ru";
+    let open = MenuItem::with_id(app, "open", if ru { "Открыть TAB" } else { "Open TAB" }, true, None::<&str>)?;
+    let stop = MenuItem::with_id(app, "stop", if ru { "Остановить все задачи" } else { "Stop all tasks" }, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", if ru { "Выйти" } else { "Exit" }, true, None::<&str>)?;
+    Menu::with_items(app, &[&open, &stop, &quit])
+}
+#[tauri::command]
+fn set_ui_language(app: tauri::AppHandle, language: String) -> R<()> {
+    if language != "en" && language != "ru" { return Err("Unsupported language".into()); }
+    let menu = tray_menu(&app, &language).map_err(err)?;
+    app.tray_by_id("main-tray").ok_or("Tray is unavailable")?.set_menu(Some(menu)).map_err(err)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -201,11 +216,7 @@ fn main() {
                     }
                 }
             });
-            use tauri::menu::{Menu, MenuItem};
-            let open = MenuItem::with_id(app, "open", "Открыть TAB", true, None::<&str>)?;
-            let stop = MenuItem::with_id(app, "stop", "Остановить все задачи", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &stop, &quit])?;
+            let menu = tray_menu(app.handle(), "en")?;
             let icon = tauri::image::Image::new_owned(
                 include_bytes!("../icons/tray-star.rgba").to_vec(), 32, 32,
             );
@@ -255,6 +266,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             set_window_theme,
             set_tray_icon,
+            set_ui_language,
             snapshot,
             discover,
             enable_agent,
