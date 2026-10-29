@@ -13,6 +13,16 @@ MIT, Copyright (c) 2025 Mario Zechner; 2025-2026 Can Bölük; 2026 Stencil Labs,
 Both full notices are shipped in `apps/desktop/public/icons/NOTICE.txt`.
 Logos identify the respective agents; no endorsement is implied.
 
+## ASCII theme renderer
+
+Theme Generator and the packaged background renderer adapt rendering formulas from
+collidingScopes/ascii, commit `af6b92f7c48e2b46f7f29d18ba8409a0f93900ff`, `ASCII.js`.
+Copyright (c) 2024 Alan Ang, MIT. Full license: `tools/theme-generator/LICENSE-ascii.txt`,
+also shipped with the generator and in `apps/desktop/public/themes/LICENSE-ascii.txt`.
+Local changes: offline luminance frames, two-color palette, independent timing,
+pointer trails, ZIP export, and desktop theme transitions. Theme media was supplied
+by the installation owner; the renderer's MIT license does not license that media.
+
 ## Agent runtime
 
 Эта реализация написана отдельно. Исходные файлы HeyAgent, Telecodex и OMP Rust SDK не копировались; они использовались как архитектурные и protocol references, перечисленные в AGENT_HUB_PLAN.md. Generated OMP wire.rs не включён в текущий ограниченный RPC v1 adapter.

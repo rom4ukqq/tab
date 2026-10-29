@@ -5,6 +5,11 @@
 html,body,#root{height:100%;overflow:hidden}
 .shell{position:relative;isolation:isolate;height:100dvh;min-height:0;overflow:hidden;grid-template-columns:220px minmax(0,1fr);grid-template-rows:0 minmax(0,1fr);background:var(--hub-bg)}
 .matrix-backdrop{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
+.theme-background{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
+.theme-layer{position:absolute;inset:0;width:100%;height:100%;border:0;transition:opacity .7s ease;pointer-events:none}
+.theme-layer .matrix-backdrop{z-index:0}
+@media(prefers-reduced-motion:reduce){.theme-layer{transition:none}}
+@media(forced-colors:active){.theme-background{display:none}}
 .matrix-grid{position:absolute;inset:0;background-image:linear-gradient(var(--hub-border) 1px,transparent 1px),linear-gradient(90deg,var(--hub-border) 1px,transparent 1px);background-size:22px 22px;opacity:.22}
 .matrix-columns{position:absolute;inset:0;mask-image:linear-gradient(90deg,#000 0%,#0009 42%,#0008 65%,#000 100%)}
 .matrix-columns span{position:absolute;white-space:pre;font:12px/22px 'Cascadia Mono',Consolas,monospace;color:var(--matrix-ink);text-shadow:0 0 9px currentColor;animation:matrix-fall linear infinite;user-select:none}

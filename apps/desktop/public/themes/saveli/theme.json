@@ -1,0 +1,42 @@
+{
+  "format": "agent-hub-ascii-theme",
+  "version": 1,
+  "name": "Saveli",
+  "createdAt": "2026-10-29T11:48:41.300Z",
+  "renderer": "ascii-preview-v3",
+  "data": {
+    "path": "frames.bin.gz",
+    "encoding": "gzip",
+    "layout": "frame-row-column-u8-luminance",
+    "sha256": "48dc6c8e08ca8239251c63f270a8385ecfcc1ce52970ad3433a45d81d679806a",
+    "uncompressedBytes": 40367520,
+    "columns": 90,
+    "rows": 68,
+    "frames": 6596,
+    "sourceFps": 96,
+    "width": 1440,
+    "height": 1088,
+    "loop": true,
+    "interpolation": "motion-compensated-96fps"
+  },
+  "settings": {
+    "speed": 0.6,
+    "glyphSpeed": 14,
+    "smooth": true,
+    "gradient": false,
+    "saturation": 0,
+    "fontSize": 3,
+    "resolution": 100,
+    "threshold": 30,
+    "randomness": 15,
+    "invert": false,
+    "accent": "#c7205b",
+    "secondary": "#c7205b",
+    "brushRadius": 100,
+    "brushStrength": 60,
+    "recovery": 3,
+    "darkFill": 18
+  },
+  "background": "#080b10",
+  "preview": "preview.png"
+}

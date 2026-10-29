@@ -1,0 +1,42 @@
+{
+  "format": "agent-hub-ascii-theme",
+  "version": 1,
+  "name": "pr0n",
+  "createdAt": "2026-10-29T11:55:49.408Z",
+  "renderer": "ascii-preview-v3",
+  "data": {
+    "path": "frames.bin.gz",
+    "encoding": "gzip",
+    "layout": "frame-row-column-u8-luminance",
+    "sha256": "ae79ab877ca86533198bb5df6c1ec7ed71285a9731564a372567fb6897d414c5",
+    "uncompressedBytes": 1119960,
+    "columns": 90,
+    "rows": 51,
+    "frames": 244,
+    "sourceFps": 24,
+    "width": 1920,
+    "height": 1080,
+    "loop": true,
+    "interpolation": "linear-blend"
+  },
+  "settings": {
+    "speed": 0.5,
+    "glyphSpeed": 14,
+    "smooth": true,
+    "gradient": true,
+    "saturation": 50,
+    "fontSize": 3,
+    "resolution": 100,
+    "threshold": 30,
+    "randomness": 15,
+    "invert": false,
+    "accent": "#c7205b",
+    "secondary": "#1430ff",
+    "brushRadius": 100,
+    "brushStrength": 60,
+    "recovery": 3,
+    "darkFill": 18
+  },
+  "background": "#080b10",
+  "preview": "preview.png"
+}

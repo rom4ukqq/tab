@@ -56,6 +56,21 @@ npm.cmd --prefix apps/desktop ci
 
 `hub-core` содержит domain, storage worker, process supervisor, adapters, access control и Telegram. `apps/desktop/src-tauri` — тонкий desktop host. `fake-cli` — только executable для integration fixtures, он не включается в desktop installer.
 
+## ASCII-темы и Theme Generator
+
+В «Настройки → Фон» доступны «Матрица», «Saveli» и «pr0n». Настройки цветов и скорости
+взяты из предоставленных архивов. Следующая тема загружается до плавного перехода;
+выбор сохраняется локально. MP4 в приложение не включается.
+
+Отдельный редактор: `tools/theme-generator/index.html`. В установщике он находится
+в папке `theme-generator` рядом с exe; открывается в Edge/Chrome без сервера и Python.
+Поддерживает локальную загрузку ролика, настройку и экспорт `.agent-hub-theme.zip`.
+Автоматического импорта ZIP через интерфейс Agent Hub пока нет.
+
+При изменении редактора выполните `python tools/theme-generator/build_player.py`,
+чтобы обновить используемый приложением проигрыватель. Перед импортом встроенных
+тем `import_theme.py` проверяет размер распакованных данных и SHA-256.
+
 ## Данные и восстановление
 
 Данные находятся в `%LOCALAPPDATA%\AgentHub`; bot token и pepper — в Windows Credential Manager. PIN не сохраняется в Telegram inbox, event log или аудите. После перезапуска grants недействительны, pending approvals устаревают, незавершённые задачи не переотправляются. Неопределённая отправка Telegram остаётся `unknown`.
