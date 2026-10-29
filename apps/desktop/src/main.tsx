@@ -25,6 +25,12 @@ function App() {
   const [dark, setDark] = useState(matchMedia('(prefers-color-scheme: dark)').matches);
   const [projectName, setProjectName] = useState(''), [root, setRoot] = useState('');
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
+  const numericUser = user.trim();
+  const userIdError = !numericUser ? 'Введите ваш числовой Telegram ID.' :
+    !/^\d+$/.test(numericUser) || !Number.isSafeInteger(Number(numericUser)) || Number(numericUser) <= 0 ?
+      'Нужен числовой ID, например 123456789. Имя пользователя или @username не подходит.' : '';
+  const pinError = !/^\d{4,6}$/.test(pin) ? 'PIN должен содержать от 4 до 6 цифр.' : '';
+  const telegramFormError = !token.trim() ? 'Введите bot token из BotFather.' : userIdError || pinError;
   const [audit, setAudit] = useState<any[]>([]), [autostart, setAutostart] = useState(false);
   const refresh = useCallback(async () => setSnap(await invoke<Snapshot>('snapshot')), []);
   const run = async (fn: () => Promise<unknown>) => {
@@ -65,12 +71,14 @@ function App() {
             <p>Используйте отдельного бота из BotFather. Одновременно с Agent Hub у него не должно быть другого Telegram-моста.</p>
             <div className="form-grid">
               <Field label="Bot token"><Input type="password" autoComplete="off" value={token} onChange={(_, d) => setToken(d.value)}/></Field>
-              <Field label="Ваш Telegram User ID"><Input value={user} placeholder={String(snap.config.telegram_user ?? '')} onChange={(_, d) => setUser(d.value)}/></Field>
-              <Field label="PIN · рекомендуется 6 цифр"><Input type="password" autoComplete="new-password" maxLength={6} value={pin} onChange={(_, d) => setPin(d.value)}/></Field>
+              <Field label="Ваш числовой Telegram ID" hint="Узнать свой ID: откройте @userinfobot в Telegram и нажмите Start. Скопируйте число из строки Id." validationState={user && userIdError ? 'error' : 'none'} validationMessage={user ? userIdError : undefined}><Input inputMode="numeric" value={user} placeholder="Например, 123456789" onChange={(_, d) => setUser(d.value)}/></Field>
+              <Field label="PIN · рекомендуется 6 цифр" validationState={pin && pinError ? 'error' : 'none'} validationMessage={pin ? pinError : undefined}><Input type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin} onChange={(_, d) => setPin(d.value)}/></Field>
             </div>
-            <Button appearance="primary" disabled={busy || !token || !/^\d+$/.test(user) || !/^\d{4,6}$/.test(pin)} onClick={() => run(async () => {
-              await invoke('configure_telegram', { token, userId: Number(user), pin }); setToken(''); setPin(''); setNotice('Настройки сохранены. Теперь подключите бота.');
+            <Button appearance="primary" disabled={busy || !!telegramFormError} onClick={() => run(async () => {
+              if (telegramFormError) throw new Error(telegramFormError);
+              await invoke('configure_telegram', { token: token.trim(), userId: Number(numericUser), pin }); setToken(''); setPin(''); setNotice('Настройки сохранены. Теперь подключите бота.');
             })}>Сохранить подключение</Button>
+            {!busy && telegramFormError && <p role="status">Чтобы сохранить: {telegramFormError}</p>}
             <p className="muted">Bot token хранится в Windows Credential Manager. Принимаются сообщения только от указанного User ID в личном чате.</p>
           </div>
           <div className="card">
