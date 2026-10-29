@@ -151,7 +151,7 @@ function App() {
             <div className="theme-import-row"><Button appearance="subtle" className="theme-import-button" onClick={() => setDeveloper(false)}>{t("Скрыть Developer Settings")}</Button></div>
           </div>}
           <details className="card"><summary>{t("Безопасность и журнал")}</summary><p>{t("Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.")}</p>
-            <div className="row"><Button onClick={() => command('revoke_access')}>{t("Отозвать доступ")}</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>{t("Показать аудит")}</Button></div>
+            <div className="row"><Button appearance="subtle" className="theme-import-button" onClick={() => command('revoke_access')}>{t("Отозвать доступ")}</Button><Button appearance="subtle" className="theme-import-button" onClick={() => run(async () => setAudit(await invoke('audit')))}>{t("Показать аудит")}</Button></div>
             {audit.map((a, i) => <div className="audit" key={i}><time>{new Date(a.at * 1000).toLocaleString(language)}</time><strong>{a.action}</strong><code>{a.target}</code></div>)}
           </details>
           <details className="card"><summary>{t("О сборке")}</summary><p>{t("TAB — Telegram Agents Bridge 0.1.0 · первая сборка MVP для одного ПК. Реальные CLI и Telegram требуют приёмки после локальной настройки.")}</p><p>{t("Данные: %LOCALAPPDATA%\\AgentHub (сохранены при переименовании). Multi-PC, голос, Computer Use и подписанные обновления пока не включены.")}</p></details>
