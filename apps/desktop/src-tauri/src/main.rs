@@ -151,6 +151,17 @@ fn get_autostart(app: tauri::AppHandle) -> R<bool> {
     app.autolaunch().is_enabled().map_err(err)
 }
 
+#[tauri::command]
+fn set_tray_icon(app: tauri::AppHandle, kind: String) -> R<()> {
+    let bytes: &[u8] = match kind.as_str() {
+        "star" => include_bytes!("../icons/tray-star.rgba"),
+        "face" => include_bytes!("../icons/tray-face.rgba"),
+        _ => return Err("Unknown tray icon".into()),
+    };
+    let tray = app.tray_by_id("main-tray").ok_or("Tray is unavailable")?;
+    tray.set_icon(Some(tauri::image::Image::new_owned(bytes.to_vec(), 32, 32))).map_err(err)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -196,9 +207,9 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &stop, &quit])?;
             let icon = tauri::image::Image::new_owned(
-                include_bytes!("../icons/tray-face.rgba").to_vec(), 32, 32,
+                include_bytes!("../icons/tray-star.rgba").to_vec(), 32, 32,
             );
-            tauri::tray::TrayIconBuilder::new()
+            tauri::tray::TrayIconBuilder::with_id("main-tray")
                 .icon(icon)
                 .tooltip("TAB - Telegram Agents Bridge")
                 .menu(&menu)
@@ -243,6 +254,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             set_window_theme,
+            set_tray_icon,
             snapshot,
             discover,
             enable_agent,

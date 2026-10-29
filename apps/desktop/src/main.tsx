@@ -34,7 +34,20 @@ function App() {
   useEffect(() => { localStorage.setItem('agent-hub-accent', accent); }, [accent]);
   useEffect(() => { invoke('set_window_theme', { dark }).catch(e => setError(String(e))); }, [dark]);
   const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('agent-hub-matrix-motion') !== 'off');
-  const [background, setBackground] = useState<BackgroundTheme>(() => { const saved = localStorage.getItem('agent-hub-background'); return validBackground(saved) ? saved : 'matrix'; });
+  const [background, setBackground] = useState<BackgroundTheme>(() => { const saved = localStorage.getItem('agent-hub-background'); return validBackground(saved) && saved !== 'pr0n' ? saved : 'matrix'; });
+  const [developer, setDeveloper] = useState(false);
+  const [trayIcon, setTrayIcon] = useState<'star' | 'face'>(() => localStorage.getItem('tab-tray-icon') === 'face' ? 'face' : 'star');
+  useEffect(() => { invoke('set_tray_icon', { kind: trayIcon }).then(() => localStorage.setItem('tab-tray-icon', trayIcon)).catch(e => setError(String(e))); }, [trayIcon]);
+  useEffect(() => {
+    let count = 0;
+    const unlock = (e: KeyboardEvent) => {
+      if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.key !== 'Tab') { count = 0; return; }
+      if (++count === 10) { setDeveloper(true); setPage('Настройки'); count = 0; }
+    };
+    window.addEventListener('keydown', unlock);
+    return () => window.removeEventListener('keydown', unlock);
+  }, []);
   useEffect(() => { localStorage.setItem('agent-hub-background', background); }, [background]);
   useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
@@ -110,10 +123,15 @@ function App() {
             <div className="setting"><Switch checked={autostart} onChange={(_, d) => run(async () => { await invoke('set_autostart', { enabled: d.checked }); setAutostart(d.checked); })} label="Запускать в трее при входе в Windows"/></div>
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label="Тёмная тема"/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
-            <Field label="Фон"><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value)) setBackground(value); }}>{backgroundThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+            <Field label="Фон"><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value) && value !== 'pr0n') setBackground(value); }}>{background === 'pr0n' && <option value="pr0n" disabled>Developer theme</option>}{backgroundThemes.filter(t => t.id !== 'pr0n').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label="Анимация фона"/></div>
             <p className="muted">Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.</p>
           </div>
+          {developer && <div className="card"><h2>Developer Settings</h2>
+            <Field label="Иконка трея"><select value={trayIcon} onChange={e => { const value = e.target.value; if (value === 'star' || value === 'face') setTrayIcon(value); }}><option value="star">*</option><option value="face">:3</option></select></Field>
+            <Field label="Секретные фоны"><select value={background} onChange={e => { const value = e.target.value; if (validBackground(value)) setBackground(value); }}>{backgroundThemes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+            <Button onClick={() => { setDeveloper(false); if (background === 'pr0n') setBackground('matrix'); }}>Скрыть Developer Settings</Button>
+          </div>}
           <details className="card"><summary>Безопасность и журнал</summary><p>Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.</p>
             <div className="row"><Button onClick={() => command('revoke_access')}>Отозвать доступ</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>Показать аудит</Button></div>
             {audit.map((a, i) => <div className="audit" key={i}><time>{new Date(a.at * 1000).toLocaleString()}</time><strong>{a.action}</strong><code>{a.target}</code></div>)}
