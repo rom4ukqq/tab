@@ -2,12 +2,12 @@
 
 /* Local Libron is optional: no remote font request or unlicensed font bundle. */
 @font-face{font-family:Libron;src:local('Libron');font-display:swap}
-.theme-light{--hub-bg:#faf9f6;--hub-sidebar:#f0eeea;--hub-panel:#fffefa;--hub-border:#e1ded7;--hub-text:#302e2a;--hub-muted:#706c65;--hub-selected:#e4e1da;--hub-accent:#a85d43}
-.theme-dark{--hub-bg:#262522;--hub-sidebar:#201f1d;--hub-panel:#2d2b28;--hub-border:#44413b;--hub-text:#e8e3db;--hub-muted:#b2aba0;--hub-selected:#36332e;--hub-accent:#dc957b}
+.theme-light{--hub-bg:#faf9f6;--hub-sidebar:#f0eeea;--hub-panel:#fffefa;--hub-border:#e1ded7;--hub-text:#302e2a;--hub-muted:#706c65;--hub-selected:#e4e1da;--hub-accent:#FECA17}
+.theme-dark{--hub-bg:#262522;--hub-sidebar:#201f1d;--hub-panel:#2d2b28;--hub-border:#44413b;--hub-text:#e8e3db;--hub-muted:#b2aba0;--hub-selected:#36332e;--hub-accent:#FECA17}
 .shell{background:var(--hub-bg);color:var(--hub-text);grid-template-columns:240px minmax(0,1fr)}
 .shell aside{background:var(--hub-sidebar);border-color:var(--hub-border);padding:28px 14px 18px}
 .brand{gap:10px;margin:2px 12px 40px;font-size:20px;font-weight:550;letter-spacing:-.6px}
-.brand-mark{background:none;color:var(--hub-accent);font-size:39px;font-weight:400;width:34px;height:40px}
+.brand-mark{background:#242015;color:var(--hub-accent);width:40px;height:40px;border-radius:11px;display:grid;place-items:center}
 .brand small{font-size:11px;letter-spacing:0;font-weight:400;color:var(--hub-muted);opacity:1;margin-top:4px}
 .nav{padding:11px 14px;gap:12px;border-radius:7px;margin-bottom:5px;font-size:14px}
 .nav:hover{background:var(--hub-selected)}

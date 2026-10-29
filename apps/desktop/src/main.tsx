@@ -50,10 +50,10 @@ function App() {
     const timer = setInterval(() => refresh().catch(() => {}), 2000);
     return () => { disposed = true; clean.forEach(f => f()); clearInterval(timer); };
   }, [refresh]);
-  const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: dark ? '#c98268' : '#a85d43', colorBrandBackgroundHover: dark ? '#dc957b' : '#914d36', colorBrandBackgroundPressed: dark ? '#b97158' : '#7e412d', colorNeutralForegroundOnBrand: dark ? '#211c19' : '#ffffff', colorBrandForeground1: dark ? '#e3a38b' : '#965037', colorBrandStroke1: dark ? '#c98268' : '#a85d43', borderRadiusMedium: '8px' };
+  const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: '#FECA17', colorBrandBackgroundHover: '#FFD747', colorBrandBackgroundPressed: '#E4B200', colorNeutralForegroundOnBrand: '#242015', colorBrandForeground1: dark ? '#FECA17' : '#705500', colorBrandStroke1: '#FECA17', colorCompoundBrandBackground: '#FECA17', colorCompoundBrandBackgroundHover: '#FFD747', colorCompoundBrandBackgroundPressed: '#E4B200', colorCompoundBrandStroke: '#FECA17', colorCompoundBrandStrokeHover: '#FFD747', colorCompoundBrandStrokePressed: '#E4B200', borderRadiusMedium: '8px' };
   return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'}>
     <aside>
-      <div className="brand"><span className="brand-mark" aria-hidden="true">✳</span><div>Agent Hub<small>Ваши агенты рядом</small></div></div>
+      <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub<small>Ваши агенты рядом</small></div></div>
       <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>
       <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? 'Этот компьютер'}<small>{snap?.telegram_status ?? 'Запуск…'}</small><small>Активных задач: {snap?.turns.filter(active).length ?? 0}</small></div>
     </aside>
