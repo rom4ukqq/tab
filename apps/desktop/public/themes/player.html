@@ -7,7 +7,7 @@ header,aside,.controls,.hint,#seek{display:none!important}html,body,main,.stage{
 <main><section class="stage"><div class="controls"><button id="upload" disabled>Выбрать ролик</button><input id="videoFile" type="file" accept="video/*,.mp4,.webm,.mov" hidden><button id="cancelUpload" hidden>Отменить</button><span id="uploadStatus">Можно перетащить видео сюда · до 3 минут / 500 МБ</span></div><canvas id="art" width="1440" height="1088" aria-label="ASCII-анимация из исходного ролика"></canvas>
 <div class="controls"><button id="play" disabled>Пауза</button><button id="seam" disabled>Проверить стык</button><button id="fullscreen">На весь экран</button><span id="clock">Загрузка данных…</span></div>
 <input id="seek" type="range" min="0" max="1" step="0.001" value="0" aria-label="Позиция анимации" disabled>
-<p class="hint">Зажми ЛКМ и веди по изображению — кисть оставляет узкий ASCII-след из # ; : . Он постепенно редеет, возвращая исходный фон. «На весь экран» скрывает настройки; Esc возвращает их.</p>
+<p class="hint">«На весь экран» скрывает настройки; Esc возвращает их.</p>
 </section><aside class="panel"><strong>Цвета ASCII</strong>
 <label>Первый цвет <output id="accentHex"></output><input id="accent" type="color" value="#feca17"></label>
 <label>Второй цвет <output id="secondaryHex"></output><input id="secondary" type="color" value="#6be8b9"></label>
