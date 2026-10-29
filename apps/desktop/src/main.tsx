@@ -6,7 +6,7 @@ import { FluentProvider, webDarkTheme, webLightTheme, Button, Input, Switch, Fie
 import './style.css';
 import './bridge.css';
 import './glass.css';
-import { MatrixBackdrop, WindowChrome } from './WindowChrome';
+import { MatrixBackdrop } from './WindowChrome';
 
 type Provider = 'codex' | 'claude' | 'omp' | 'mock';
 type Agent = { provider: Provider; executable: string; version: string; enabled: boolean; accept_unsandboxed: boolean };
@@ -28,6 +28,7 @@ function App() {
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [dark, setDark] = useState(() => { const saved = localStorage.getItem('agent-hub-theme'); return saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; });
   useEffect(() => { localStorage.setItem('agent-hub-theme', dark ? 'dark' : 'light'); }, [dark]);
+  useEffect(() => { invoke('set_window_theme', { dark }).catch(e => setError(String(e))); }, [dark]);
   const [animateBackground, setAnimateBackground] = useState(() => localStorage.getItem('agent-hub-matrix-motion') !== 'off');
   useEffect(() => { localStorage.setItem('agent-hub-matrix-motion', animateBackground ? 'on' : 'off'); }, [animateBackground]);
   const [token, setToken] = useState(''), [user, setUser] = useState(''), [pin, setPin] = useState('');
@@ -55,7 +56,6 @@ function App() {
   const theme = { ...(dark ? webDarkTheme : webLightTheme), colorBrandBackground: '#FECA17', colorBrandBackgroundHover: '#FFD747', colorBrandBackgroundPressed: '#E4B200', colorNeutralForegroundOnBrand: '#242015', colorBrandForeground1: dark ? '#FECA17' : '#705500', colorBrandStroke1: '#FECA17', colorCompoundBrandBackground: '#FECA17', colorCompoundBrandBackgroundHover: '#FFD747', colorCompoundBrandBackgroundPressed: '#E4B200', colorCompoundBrandStroke: '#FECA17', colorCompoundBrandStrokeHover: '#FFD747', colorCompoundBrandStrokePressed: '#E4B200', borderRadiusMedium: '8px' };
   return <FluentProvider theme={theme}><div className={dark ? 'shell theme-dark' : 'shell theme-light'}>
     <MatrixBackdrop animate={animateBackground}/>
-    <WindowChrome onError={setError}/>
     <aside>
       <div className="brand"><span className="brand-mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none"><path d="M9 9 23 23M9 23 23 9" stroke="currentColor" strokeWidth="2.5"/><rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="3" width="10" height="10" rx="3" fill="currentColor"/><rect x="3" y="19" width="10" height="10" rx="3" fill="currentColor"/><rect x="19" y="19" width="10" height="10" rx="3" fill="currentColor"/></svg></span><div>Agent Hub<small>Ваши агенты рядом</small></div></div>
       <nav aria-label="Основная навигация">{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{p}</button>)}</nav>

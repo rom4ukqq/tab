@@ -9,6 +9,26 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 #[tauri::command]
+fn set_window_theme(window: tauri::WebviewWindow, dark: bool) -> R<()> {
+    if window.label() != "main" { return Err("Unknown window".into()); }
+    window.set_theme(Some(if dark { tauri::Theme::Dark } else { tauri::Theme::Light })).map_err(err)?;
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR};
+        let hwnd = window.hwnd().map_err(err)?.0 as windows_sys::Win32::Foundation::HWND;
+        // COLORREF is 0x00BBGGRR. DWM owns the real caption buttons and hit testing.
+        let caption: u32 = if dark { 0x0018140d } else { 0x00f8f8f5 };
+        let text: u32 = if dark { 0x00f1efe9 } else { 0x00352b17 };
+        unsafe {
+            // Older Windows versions may not support custom caption colours;
+            // they retain the native light/dark titlebar set above.
+            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR as u32, &caption as *const _ as _, 4);
+            DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR as u32, &text as *const _ as _, 4);
+        }
+    }
+    Ok(())
+}
+#[tauri::command]
 async fn snapshot(h: H<'_>) -> R<Snapshot> {
     h.snapshot().await.map_err(err)
 }
@@ -229,6 +249,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            set_window_theme,
             snapshot,
             discover,
             enable_agent,

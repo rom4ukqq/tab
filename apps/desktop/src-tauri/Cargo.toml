@@ -20,6 +20,9 @@ serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+
 [[bin]]
 name = "agent-hub"
 path = "src/main.rs"
