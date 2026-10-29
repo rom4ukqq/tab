@@ -1,0 +1,126 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent Hub · Theme Generator</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080d12;color:#e8eef3;font:14px/1.5 system-ui,sans-serif}header{padding:20px 28px;border-bottom:1px solid #ffffff1a;display:flex;gap:24px;align-items:center;justify-content:space-between}h1{font-size:20px;margin:0}small,.hint{color:#9faebb}main{display:grid;grid-template-columns:minmax(0,1fr) 300px;max-width:1600px;margin:auto;gap:22px;padding:24px}.stage{min-width:0}canvas{display:block;width:100%;height:auto;border:1px solid #ffffff20;border-radius:16px;background:#080c37}.controls{display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap}button{border:1px solid #ffffff30;border-radius:9px;padding:9px 13px;background:#18232e;color:inherit;font:inherit;cursor:pointer}button:hover{background:#243340}button:disabled{opacity:.4;cursor:wait}.panel{background:#101922;border:1px solid #ffffff18;border-radius:16px;padding:20px;height:fit-content}label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:16px 0}input[type=range]{width:100%;accent-color:#feca17}input[type=color]{width:52px;height:34px;border:0;background:none;cursor:pointer}dl{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:13px}dt{color:#9faebb}dd{margin:0;font-family:Consolas,monospace}.swatches{display:flex;gap:8px}.swatches button{width:27px;height:27px;border-radius:50%;padding:0}.palette{display:flex;gap:6px}.palette span{height:22px;flex:1;border-radius:5px;border:1px solid #ffffff25}.tag{font-size:12px;padding:4px 10px;border:1px solid #ffffff25;border-radius:20px}.error{color:#ff9e9e}.footer{margin-top:16px;font-size:12px;color:#9faebb}#clock{font-variant-numeric:tabular-nums}@media(max-width:850px){main{grid-template-columns:1fr;padding:12px}header{padding:15px}.panel{order:-1}dl{grid-template-columns:1fr auto 1fr auto}}
+</style>
+<header><div><h1>Theme Generator</h1><small>Agent Hub · редактор ASCII-тем</small></div><span class="tag">Локальная обработка</span></header>
+<main><section class="stage"><div class="controls"><button id="upload" disabled>Выбрать ролик</button><input id="videoFile" type="file" accept="video/*,.mp4,.webm,.mov" hidden><button id="cancelUpload" hidden>Отменить</button><span id="uploadStatus">Можно перетащить видео сюда · до 3 минут / 500 МБ</span></div><canvas id="art" width="1440" height="1088" aria-label="ASCII-анимация из исходного ролика"></canvas>
+<div class="controls"><button id="play" disabled>Пауза</button><button id="seam" disabled>Проверить стык</button><button id="fullscreen">На весь экран</button><span id="clock">Загрузка данных…</span></div>
+<input id="seek" type="range" min="0" max="1" step="0.001" value="0" aria-label="Позиция анимации" disabled>
+<p class="hint">Зажми ЛКМ и веди по изображению — кисть оставляет узкий ASCII-след из # ; : . Он постепенно редеет, возвращая исходный фон. «На весь экран» скрывает настройки; Esc возвращает их.</p>
+</section><aside class="panel"><strong>Цвета ASCII</strong>
+<label>Первый цвет <output id="accentHex"></output><input id="accent" type="color" value="#feca17"></label>
+<label>Второй цвет <output id="secondaryHex"></output><input id="secondary" type="color" value="#6be8b9"></label>
+<div class="swatches"><button data-color="#feca17" style="background:#feca17" aria-label="Жёлтый"></button><button data-color="#59d9b0" style="background:#59d9b0" aria-label="Мятный"></button><button data-color="#66b5ff" style="background:#66b5ff" aria-label="Голубой"></button><button data-color="#b79aff" style="background:#b79aff" aria-label="Фиолетовый"></button><button data-color="#c7205b" style="background:#c7205b" aria-label="Малиновый"></button></div>
+<p class="hint">Два цвета символов выбираются независимо. Базовый фон — #080b10. Bg Gradient меняет яркость фона по изображению, поэтому светлые участки могут быть яркими. Пресеты меняют только первый цвет.</p><div class="palette"><span id="bgChip" title="Фон"></span><span id="fontChip" title="Символы"></span><span id="font2Chip" title="Второй цвет"></span></div>
+<div id="settings"></div>
+<p class="footer">Движение — скорость исходной сцены. Символы — независимая частота их обновления: 0 фиксирует текущие знаки, движение и цвета продолжаются. Пауза останавливает оба таймера.</p>
+<p class="footer">Resolution выше 70 увеличивает плотность сетки, но не детализацию подготовленного источника.</p>
+<button id="reset">Сбросить параметры</button><button id="copy">Копировать настройки</button>
+<label>Название темы<input id="themeName" type="text" maxlength="80" value="Saveliev" style="width:150px"></label><button id="exportTheme" disabled>Экспорт темы (.zip)</button><p id="exportStatus" class="footer">Архив содержит ASCII-данные и настройки, без исходного видео.</p>
+<pre id="summary" style="white-space:pre-wrap;font:12px/1.6 Consolas,monospace"></pre>
+<p class="footer">Источник подготовлен заранее в сетку яркости ячеек. Браузер рисует фон и ASCII-символы; MP4 и видеодекодера здесь нет. Монтаж исходника сохранён.</p>
+<p class="footer">Алгоритм: <a href="https://github.com/collidingScopes/ascii" style="color:inherit" target="_blank" rel="noreferrer">collidingScopes/ascii</a>, MIT. Адаптация: предрасчёт кадров, циклический стык, палитра от акцента.</p>
+</aside></main>
+<script src="theme-data.js"></script>
+<script>
+// Rendering formulas adapted from collidingScopes/ascii (Alan Ang, MIT),
+// af6b92f7c48e2b46f7f29d18ba8409a0f93900ff. Offline preview only.
+const $=id=>document.getElementById(id),canvas=$('art'),surface=document.createElement('canvas');surface.width=canvas.width;surface.height=canvas.height;
+const ctx=surface.getContext('2d',{alpha:false}),display=canvas.getContext('2d',{alpha:false});canvas.style.touchAction='none';canvas.style.cursor='crosshair';
+const ramp='____``..--^^~~<>??123456789%%&&@@'.replaceAll('_',' ');
+const defaults={speed:.5,glyphSpeed:12,smooth:true,gradient:true,saturation:60,fontSize:3,resolution:70,threshold:30,randomness:15,invert:false,accent:'#feca17',secondary:'#6be8b9',brushRadius:100,brushStrength:60,recovery:3,darkFill:18};
+let settings={...defaults};try{settings={...defaults,...JSON.parse(localStorage.getItem('ascii-preview-settings-v3')||'{}')}}catch{}
+const controls=[['speed','Движение анимации',0,2,.05,'×'],['smooth','Сглаживание движения'],['glyphSpeed','Обновление символов',0,30,1,'/с'],['gradient','Bg Gradient'],['saturation','Bg Saturation',0,100,1,'%'],['fontSize','Font Size Factor',.5,6,.1,''],['resolution','Resolution',20,140,1,''],['threshold','Threshold',0,95,1,'%'],['randomness','Randomness',0,100,1,'%'],['invert','Invert'],['darkFill','Символы в тёмных областях',0,60,1,'%'],['brushRadius','Радиус разрыва',20,240,5,' px'],['brushStrength','Сила разрыва',0,150,5,'%'],['recovery','Восстановление',.5,10,.5,' с']];
+for(const [id,label,min,max,step,unit] of controls){const boolean=min===undefined;const wrap=document.createElement('div');wrap.innerHTML=boolean?`<label>${label}<input id="${id}" type="checkbox" aria-label="${label}"></label>`:`<label for="${id}">${label}<output id="${id}Label"></output></label><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" aria-label="${label}">`;$('settings').append(wrap);$(id).oninput=()=>{settings[id]=boolean?$(id).checked:Number($(id).value);glyphKey='';lastFrame=-1;sync();makePalette()}}
+function sync(){for(const [id,label,min,max,step,unit] of controls){if(min===undefined)$(id).checked=settings[id];else{$(id).value=settings[id];$(id+'Label').value=id==='speed'?'×'+settings[id].toFixed(2):settings[id]+unit}}$('accent').value=settings.accent;$('secondary').value=settings.secondary;$('accentHex').value=settings.accent;$('secondaryHex').value=settings.secondary;$('summary').textContent=JSON.stringify(settings,null,2);try{localStorage.setItem('ascii-preview-settings-v3',JSON.stringify(settings))}catch{}}
+let meta,frames,palette,playing=true,position=0,lastTime=null,lastFrame=-1,raf=0,glyphTime=0,glyphKey='',glyphs=[],tearX=[],tearY=[],tearCols=0,tearRows=0,tearPixel=16,dragPoint=null;
+function brush(x,y,from){if(!tearCols)return;const a=from||{x,y},vx=x-a.x,vy=y-a.y,length2=vx*vx+vy*vy,r=Math.max(tearPixel*.8,settings.brushRadius*.22);for(let row=0;row<tearRows;row++)for(let col=0;col<tearCols;col++){const cx=(col+.5)*tearPixel,cy=(row+.5)*tearPixel,t=length2?Math.max(0,Math.min(1,((cx-a.x)*vx+(cy-a.y)*vy)/length2)):0,dx=cx-(a.x+t*vx),dy=cy-(a.y+t*vy),d=Math.hypot(dx,dy);if(d>=r)continue;const i=row*tearCols+col,edge=1-d/r,strength=Math.min(1,Math.sqrt(edge)*settings.brushStrength/60);tearX[i]=Math.max(tearX[i],strength)}lastFrame=-1;draw()}
+function pointerPosition(e){const b=canvas.getBoundingClientRect();return{x:(e.clientX-b.left)*canvas.width/b.width,y:(e.clientY-b.top)*canvas.height/b.height}}
+canvas.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();canvas.setPointerCapture(e.pointerId);dragPoint=pointerPosition(e);brush(dragPoint.x,dragPoint.y)};
+canvas.onpointermove=e=>{if(!dragPoint)return;if(!(e.buttons&1)){dragPoint=null;return}const p=pointerPosition(e);brush(p.x,p.y,dragPoint);dragPoint=p};
+canvas.onpointerup=canvas.onpointercancel=canvas.onlostpointercapture=()=>{dragPoint=null};
+$('fullscreen').onclick=()=>canvas.requestFullscreen().catch(()=>{$('fullscreen').textContent='Полный экран недоступен'});
+document.addEventListener('fullscreenchange',()=>{canvas.width=document.fullscreenElement===canvas?screen.width:1440;canvas.height=document.fullscreenElement===canvas?screen.height:1088;surface.width=canvas.width;surface.height=canvas.height;canvas.style.width=document.fullscreenElement===canvas?'100vw':'100%';canvas.style.height=document.fullscreenElement===canvas?'100vh':'auto';glyphKey='';lastFrame=-1;draw()});
+function rgb(hex){return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16))}
+function hue(hex){let [r,g,b]=rgb(hex).map(v=>v/255),mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;if(!d)return 210;return ((mx===r?(g-b)/d:mx===g?(b-r)/d+2:(r-g)/d+4)*60+360)%360}
+function hslRgb(h,s,l){s/=100;l/=100;const a=s*Math.min(l,1-l);return [0,8,4].map(n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))))})}
+function css(c){return `rgb(${c.join(',')})`}
+function makePalette(){palette={bgHue:220,bg:'#080b10',a:rgb(settings.accent),b:rgb(settings.secondary)};$('bgChip').style.background=palette.bg;$('fontChip').style.background=css(palette.a);$('font2Chip').style.background=css(palette.b);lastFrame=-1;if(frames)draw()}
+function noise(n){n=Math.imul(n^(n>>>16),0x45d9f3b);n=Math.imul(n^(n>>>16),0x45d9f3b);return ((n^(n>>>16))>>>0)/4294967295}
+function draw(){if(!meta||!frames)return;let frame=Math.floor(position)%meta.frames;const sample=settings.smooth?position:frame,glyphTick=Math.floor(glyphTime),key=`${glyphTick}:${settings.resolution}`;if(sample===lastFrame&&key===glyphKey)return;lastFrame=sample;
+ const size=meta.columns*meta.rows,offset=frame*size,nextOffset=((frame+1)%meta.frames)*size,blend=settings.smooth?position-Math.floor(position):0,pixel=Math.ceil(Math.min(canvas.width,canvas.height)/settings.resolution),cols=Math.ceil(canvas.width/pixel),rows=Math.ceil(canvas.height/pixel),randomness=settings.randomness/100,threshold=Math.max(0,Math.min(.98,settings.threshold/100+.2*Math.sin(glyphTime/30)*randomness));
+ if(cols!==tearCols||rows!==tearRows){tearCols=cols;tearRows=rows;tearX=new Float32Array(cols*rows);tearY=new Float32Array(cols*rows)}tearPixel=pixel;
+ const updateGlyphs=key!==glyphKey;glyphKey=key;
+ ctx.fillStyle=palette.bg;ctx.fillRect(0,0,canvas.width,canvas.height);ctx.font=`${pixel/.65*settings.fontSize/3}px 'Courier New',monospace`;ctx.textBaseline='alphabetic';
+ const bg=[],fg=[];for(let v=0;v<256;v++){let g=v/255;const lightness=g>threshold?(settings.invert?1-(1-g)**2:g*g)*100:threshold/4*100;bg[v]=settings.gradient?`hsl(${palette.bgHue} ${settings.saturation}% ${lightness}%)`:palette.bg;const t=Math.max(0,Math.min(1,(g-threshold)/(1-threshold)));fg[v]=css(palette.a.map((c,i)=>Math.round(c+(palette.b[i]-c)*t)))}
+ const sourceScale=Math.min(canvas.width/meta.width,canvas.height/meta.height),sourceWidth=meta.width*sourceScale,sourceHeight=meta.height*sourceScale,left=(canvas.width-sourceWidth)/2,top=(canvas.height-sourceHeight)/2;
+ for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+  const cell=row*cols+col,cx=(col+.5)*pixel,cy=(row+.5)*pixel,sx=Math.floor((cx-left)/sourceWidth*meta.columns),sy=Math.floor((cy-top)/sourceHeight*meta.rows),inside=sx>=0&&sy>=0&&sx<meta.columns&&sy<meta.rows,sourceCell=sy*meta.columns+sx;
+  let v=inside?Math.round(frames[offset+sourceCell]*(1-blend)+frames[nextOffset+sourceCell]*blend):0;if(settings.invert&&inside)v=255-v;const g=v/255,seed=cell*31+glyphTick*1337;
+  ctx.fillStyle=bg[v];if(glyphTick%8===0&&noise(seed+891)<randomness*.002)ctx.fillStyle=css(hslRgb(palette.bgHue,settings.saturation,5+noise(seed+612)*randomness*3));ctx.fillRect(col*pixel,row*pixel,pixel,pixel);
+  if(updateGlyphs){let index=Math.floor(g*(ramp.length-1));const randomColumn=noise(col*7919+179)<randomness,start=Math.floor(noise(col*7919+211)*rows);if(randomColumn){glyphs[cell]=((glyphTick+start)%100)/100*rows+start>row?ramp[index]:''}else{if(noise(seed)<.005*randomness)index=Math.floor(noise(seed+93)*ramp.length);glyphs[cell]=ramp[index]}}
+  const visibility=Math.max(0,Math.min(1,(g-threshold)/.045));
+  if(settings.darkFill>0){ctx.globalAlpha=settings.darkFill/100*(1-visibility);ctx.fillStyle=css(palette.a);ctx.fillText(ramp[8+Math.floor(noise(cell*79+Math.floor(glyphTime*randomness))* (ramp.length-8))],col*pixel,(row+1)*pixel)}
+  ctx.globalAlpha=visibility;ctx.fillStyle=fg[v];ctx.fillText(glyphs[cell]||' ',col*pixel,(row+1)*pixel);ctx.globalAlpha=1;
+ }
+ display.fillStyle=palette.bg;display.fillRect(0,0,canvas.width,canvas.height);
+ display.font=`${pixel/.65*settings.fontSize/3}px 'Courier New',monospace`;display.textBaseline='alphabetic';
+ for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){const i=row*cols+col,x=col*pixel,y=row*pixel,w=Math.min(pixel,canvas.width-x),h=Math.min(pixel,canvas.height-y),ink=tearX[i],restored=1-ink;display.globalAlpha=restored*restored*(3-2*restored);display.drawImage(surface,x,y,w,h,x,y,w,h);if(ink>0){const density=Math.max(0,Math.min(1,ink*(.8+noise(i*73)*.3))),chars='..::;;###',char=chars[Math.min(chars.length-1,Math.floor(density*chars.length))];display.globalAlpha=Math.min(1,ink*2);display.fillStyle=css(palette.a.map((v,k)=>Math.round(v+(palette.b[k]-v)*density)));display.fillText(char,x,y+pixel)}}display.globalAlpha=1;
+ $('seek').value=position/meta.frames;const divisor=meta.sourceFps*(settings.speed||1);$('clock').textContent=`${time(position/divisor)} / ${time(meta.frames/divisor)} · ${cols}×${rows} символов${settings.speed===0?' · движение остановлено':''}`;
+}
+function time(v){return Math.floor(v/60)+':'+String(Math.floor(v%60)).padStart(2,'0')}
+function tick(now){if(lastTime!==null){const dt=Math.min((now-lastTime)/1000,.2);if(playing){position=(position+dt*meta.sourceFps*settings.speed)%meta.frames;glyphTime+=dt*settings.glyphSpeed}for(let i=0;i<tearX.length;i++){if(tearX[i]>0){tearX[i]=Math.max(0,tearX[i]-dt/settings.recovery);lastFrame=-1}}}lastTime=now;draw();raf=requestAnimationFrame(tick)}
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'Пауза':'Продолжить'};
+$('seam').onclick=()=>{position=Math.max(0,meta.frames-6*meta.sourceFps*settings.speed);playing=true;lastFrame=-1;$('play').textContent='Пауза';draw()};
+$('seek').oninput=()=>{position=Math.min(meta.frames-1,Number($('seek').value)*meta.frames);lastFrame=-1;draw()};
+$('accent').oninput=()=>{settings.accent=$('accent').value;sync();makePalette()};document.querySelectorAll('[data-color]').forEach(b=>b.onclick=()=>{settings.accent=b.dataset.color;sync();makePalette()});
+$('secondary').oninput=()=>{settings.secondary=$('secondary').value;sync();makePalette()};
+$('reset').onclick=()=>{settings={...defaults};glyphKey='';sync();makePalette()};
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(settings,null,2));$('copy').textContent='Скопировано'}catch{$('copy').textContent='Выдели настройки ниже и скопируй'}};
+document.addEventListener('visibilitychange',()=>{cancelAnimationFrame(raf);lastTime=null;if(!document.hidden&&frames)raf=requestAnimationFrame(tick)});
+// Portable ZIP (stored entries); the large frame payload is compressed separately as gzip.
+const crcTable=Uint32Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0});
+function crc32(bytes){let crc=0xffffffff;for(const b of bytes)crc=crcTable[(crc^b)&255]^(crc>>>8);return (crc^0xffffffff)>>>0}
+function zipArchive(files){const encoder=new TextEncoder(),parts=[],central=[];let offset=0,centralSize=0;for(const [name,bytes] of files){const filename=encoder.encode(name),crc=crc32(bytes),header=new Uint8Array(30+filename.length),h=new DataView(header.buffer);h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x800,true);h.setUint16(12,33,true);h.setUint32(14,crc,true);h.setUint32(18,bytes.length,true);h.setUint32(22,bytes.length,true);h.setUint16(26,filename.length,true);header.set(filename,30);parts.push(header,bytes);const entry=new Uint8Array(46+filename.length),v=new DataView(entry.buffer);v.setUint32(0,0x02014b50,true);v.setUint16(4,20,true);v.setUint16(6,20,true);v.setUint16(8,0x800,true);v.setUint16(14,33,true);v.setUint32(16,crc,true);v.setUint32(20,bytes.length,true);v.setUint32(24,bytes.length,true);v.setUint16(28,filename.length,true);v.setUint32(42,offset,true);entry.set(filename,46);central.push(entry);centralSize+=entry.length;offset+=header.length+bytes.length}const end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,centralSize,true);e.setUint32(16,offset,true);return new Blob([...parts,...central,end],{type:'application/zip'})}
+$('exportTheme').onclick=async()=>{
+ if(!frames||importing)return;$('exportTheme').disabled=true;$('exportStatus').textContent='Подготовка архива…';
+ try{const data=frames.slice(),snapshot={...meta},options={...settings},name=$('themeName').value.trim()||'ASCII theme';
+ const thumbnailPromise=new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+ const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),v=>v.toString(16).padStart(2,'0')).join('');
+ const compressed=typeof CompressionStream!=='undefined',payload=compressed?new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()):data;
+ const path=compressed?'frames.bin.gz':'frames.bin',manifest={format:'agent-hub-ascii-theme',version:1,name,createdAt:new Date().toISOString(),renderer:'ascii-preview-v3',data:{path,encoding:compressed?'gzip':'raw',layout:'frame-row-column-u8-luminance',sha256:digest,uncompressedBytes:data.length,columns:snapshot.columns,rows:snapshot.rows,frames:snapshot.frames,sourceFps:snapshot.sourceFps,width:snapshot.width,height:snapshot.height,loop:true,interpolation:snapshot.interpolation||'linear-blend'},settings:options,background:'#080b10',preview:'preview.png'};
+ const encoder=new TextEncoder(),files=[['theme.json',encoder.encode(JSON.stringify(manifest,null,2))],[path,payload]],thumbnail=await thumbnailPromise;if(thumbnail)files.push(['preview.png',new Uint8Array(await thumbnail.arrayBuffer())]);else delete manifest.preview;
+ files[0][1]=encoder.encode(JSON.stringify(manifest,null,2));files.push(['README.txt',encoder.encode('Agent Hub ASCII theme package v1\nFrame data contains luminance cells, not video.\nSHA-256 is calculated over decompressed frame bytes.\nSettings and renderer version are in theme.json.\nPreview-only export; installation into Agent Hub requires integration.\nRenderer formulas adapted from collidingScopes/ascii (Alan Ang, MIT).\nhttps://github.com/collidingScopes/ascii\n')]);
+ const archive=zipArchive(files),url=URL.createObjectURL(archive),link=document.createElement('a');link.href=url;link.download=(name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,80)||'ascii-theme')+'.agent-hub-theme.zip';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);$('exportStatus').textContent=`Архив подготовлен · ${(archive.size/1048576).toFixed(1)} МБ. Пришли скачанный ZIP в чат.`;
+ }catch(e){$('exportStatus').textContent='Не удалось экспортировать: '+e.message}finally{$('exportTheme').disabled=false}
+};
+let importGeneration=0,importing=false;
+$('upload').onclick=()=>$('videoFile').click();
+$('videoFile').onchange=()=>{const file=$('videoFile').files[0];if(file)importVideo(file);$('videoFile').value=''};
+$('cancelUpload').onclick=()=>{importGeneration++;$('uploadStatus').textContent='Отмена…'};
+document.addEventListener('dragover',e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault()});
+document.addEventListener('drop',e=>{e.preventDefault();const file=e.dataTransfer.files[0];if(file&&window.previewReady&&!importing)importVideo(file)});
+function waitMedia(video,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('Браузер слишком долго декодирует ролик. Попробуй MP4 H.264.')),15000);function finish(error){clearTimeout(timer);video.removeEventListener(event,ok);video.removeEventListener('error',bad);error?reject(error):resolve()}function ok(){finish()}function bad(){finish(Error('Этот кодек не поддерживается браузером. Попробуй MP4 H.264 или WebM.'))}video.addEventListener(event,ok,{once:true});video.addEventListener('error',bad,{once:true});action()})}
+async function importVideo(file){
+ if(importing||!window.previewReady)return;
+ if(file.size>500*1024*1024){$('uploadStatus').textContent='Максимальный размер — 500 МБ';return}
+ const generation=++importGeneration,video=document.createElement('video'),url=URL.createObjectURL(file);video.muted=true;video.preload='auto';video.playsInline=true;importing=true;$('upload').disabled=true;$('cancelUpload').hidden=false;
+ try{
+  await waitMedia(video,'loadeddata',()=>{video.src=url;video.load()});
+  if(!Number.isFinite(video.duration)||video.duration<.25||video.duration>180)throw Error('Выбери ролик длительностью от 0,25 секунды до 3 минут.');
+  const fps=24,count=Math.max(2,Math.floor(video.duration*fps)),scale=Math.min(90/video.videoWidth,68/video.videoHeight),cols=Math.max(2,Math.round(video.videoWidth*scale)),rows=Math.max(2,Math.round(video.videoHeight*scale)),size=cols*rows,data=new Uint8Array(count*size),sampleCanvas=document.createElement('canvas');sampleCanvas.width=cols;sampleCanvas.height=rows;const sampleCtx=sampleCanvas.getContext('2d',{willReadFrequently:true});
+  for(let i=0;i<count;i++){
+   if(generation!==importGeneration)throw Error('Загрузка отменена. Предыдущий фон сохранён.');
+   const target=i/fps;if(Math.abs(video.currentTime-target)>.0001)await waitMedia(video,'seeked',()=>{video.currentTime=target});
+   sampleCtx.drawImage(video,0,0,cols,rows);const pixels=sampleCtx.getImageData(0,0,cols,rows).data;for(let j=0;j<size;j++)data[i*size+j]=Math.round(pixels[j*4]*.299+pixels[j*4+1]*.587+pixels[j*4+2]*.114);
+   if(i%12===0){$('uploadStatus').textContent=`${file.name} · подготовка ${Math.round(i/count*100)}%`;await new Promise(resolve=>setTimeout(resolve,0))}
+  }
+  if(generation!==importGeneration)throw Error('Загрузка отменена. Предыдущий фон сохранён.');
+  const overlap=Math.min(24,Math.floor(count/4)),loopCount=count-overlap,loop=new Uint8Array(loopCount*size);loop.set(data.subarray(overlap*size,(count-overlap)*size));for(let i=0;i<overlap;i++){const a=i/overlap;for(let j=0;j<size;j++)loop[(count-2*overlap+i)*size+j]=Math.round(data[(count-overlap+i)*size+j]*(1-a)+data[i*size+j]*a)}
+  meta={columns:cols,rows,frames:loopCount,sourceFps:fps,width:video.videoWidth,height:video.videoHeight};frames=loop;$('themeName').value=file.name.replace(/\.[^.]+$/,'');position=0;glyphTime=0;glyphKey='';lastFrame=-1;lastTime=null;tearX.fill(0);tearY.fill(0);draw();$('uploadStatus').textContent=`${file.name} · готово · ${cols}×${rows} · 24 кадра/с + смешивание · локально`;
+ }catch(e){$('uploadStatus').textContent=e.message}finally{video.pause();video.removeAttribute('src');video.load();URL.revokeObjectURL(url);importing=false;$('upload').disabled=false;$('cancelUpload').hidden=true}
+}
+sync();makePalette();
+(async()=>{meta=window.themeData.meta;const compressed=Uint8Array.from(atob(window.themeData.gzip),c=>c.charCodeAt(0));frames=new Uint8Array(await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());delete window.themeData;if(frames.length!==meta.uncompressedBytes)throw Error('Повреждён набор кадров');$('play').disabled=$('seam').disabled=$('seek').disabled=$('upload').disabled=$('exportTheme').disabled=false;window.previewReady=true;raf=requestAnimationFrame(tick)})().catch(e=>{$('clock').textContent=e.message;$('clock').className='error'});
+</script></html>
