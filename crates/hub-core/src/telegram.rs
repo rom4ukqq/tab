@@ -273,8 +273,7 @@ fn clip(s: &str, max: usize) -> String {
     s.chars().take_while(|c| { units += c.len_utf16(); units <= max }).collect()
 }
 fn session_buttons(sid: &str) -> Vec<Vec<Value>> {
-    vec![vec![button("Остановить задачу", format!("t:{sid}")), button("Закончить сессию", format!("e:{sid}"))],
-        vec![button("Мои диалоги", "sessions".into())]]
+    vec![vec![button("Остановить задачу", format!("t:{sid}")), button("Закончить сессию", format!("e:{sid}"))]]
 }
 async fn session_intro(hub: &Hub, chat: i64, session: &Session, resumed: bool) -> Result<()> {
     let text = {
@@ -297,7 +296,7 @@ async fn session_intro(hub: &Hub, chat: i64, session: &Session, resumed: bool) -
             Provider::Mock => "Тестовый агент: команды не выполняются",
         };
         format!(
-            "{agent} · {}\nВерсия CLI: {version}\nМодель: {model}\nРабочая папка: {directory}\n{permissions}\n\nCLI запустится при отправке задачи.\nНапишите задачу или прикрепите файлы.\n/stop — остановить задачу\n/sessions — выбрать диалог\n/help — справка",
+            "{agent} · {}\nВерсия CLI: {version}\nМодель: {model}\nРабочая папка: {directory}\n{permissions}\n\nCLI запустится при отправке задачи.\nНапишите задачу или прикрепите файлы.\n/stop — остановить задачу\n/start — выбрать агента\n/help — справка",
             if resumed { "диалог продолжен" } else { "новая сессия" },
         )
     };
@@ -309,7 +308,7 @@ async fn stop_session(hub: &Hub, chat: i64, user: i64, sid: &str, end: bool) -> 
         let tx = db.transaction()?;
         let current: Option<String> = tx.query_row("SELECT session_id FROM routes WHERE chat_id=?1", [chat], |r| r.get(0)).optional()?.flatten();
         if current.as_deref() != Some(&sid) { return Ok(None); }
-        if end { tx.execute("UPDATE routes SET session_id=NULL WHERE chat_id=?1 AND session_id=?2", params![chat, sid])?; }
+        if end { tx.execute("UPDATE routes SET session_id=NULL WHERE chat_id=?1 AND session_id=?2", params![chat, sid])?; tx.execute("INSERT OR IGNORE INTO closed_sessions VALUES(?1)", [&sid])?; }
         let turns = {
             let mut stmt = tx.prepare("SELECT body FROM turns WHERE state IN ('queued','dispatching','running')")?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
@@ -335,27 +334,18 @@ async fn selected(hub: &Hub, chat: i64) -> Result<String> {
                 [chat],
                 |r| r.get::<_, Option<String>>(0),
             )?
-            .ok_or_else(|| anyhow!("Выберите /sessions"))?)
+            .ok_or_else(|| anyhow!("Выберите агента через /start"))?)
         })
         .await
 }
-async fn sessions(hub: &Hub, chat: i64) -> Result<()> {
-    let snap = hub.snapshot().await?;
-    let mut buttons = vec![];
-    for s in snap.sessions.iter().take(40) {
-        buttons.push(vec![button(
-            &format!("{} · {}", s.provider.key(), s.title),
-            format!("s:{}", s.id),
-        )])
+async fn agent_menu(hub: &Hub, chat: i64) -> Result<()> {
+    if let Ok(sid) = selected(hub, chat).await {
+        return say(hub, chat, "TAB · вы уже общаетесь с агентом. Чтобы выбрать другого, закончите текущую сессию.", session_buttons(&sid)).await;
     }
-    buttons.push(vec![button("Новая сессия", "new".into())]);
-    say(
-        hub,
-        chat,
-        "TAB · выберите диалог или создайте новый.",
-        buttons,
-    )
-    .await
+    let buttons = hub.config.read().await.installations.iter().filter(|i| i.enabled)
+        .map(|i| vec![button(i.provider.key(), format!("p:{}", i.provider.key()))]).collect::<Vec<_>>();
+    let text = if buttons.is_empty() { "TAB · включите нужного агента на ПК." } else { "TAB · выберите агента." };
+    say(hub, chat, text, buttons).await
 }
 async fn poll(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Result<()> {
     let mut offset = hub
@@ -478,7 +468,7 @@ async fn handle(
             )
             .await;
         if ok {
-            return sessions(hub, chat).await;
+            return agent_menu(hub, chat).await;
         }
         return say(hub, chat, "Код неверен, истёк или ввод временно заблокирован. Посмотрите новый PIN в TAB на ПК.", vec![]).await;
     }
@@ -492,32 +482,23 @@ async fn handle(
     }
     if cb.is_object() {
         let data = cb["data"].as_str().unwrap_or("");
-        if data == "sessions" { return sessions(hub, chat).await; }
+        if data == "sessions" { return agent_menu(hub, chat).await; }
         if let Some(sid) = data.strip_prefix("e:").or_else(|| data.strip_prefix("t:")) {
             let end = data.starts_with("e:");
             if !stop_session(hub, chat, user, sid, end).await? {
-                return say(hub, chat, "TAB · эта карточка относится к другому или уже закрытому диалогу.", vec![vec![button("Мои диалоги", "sessions".into())]]).await;
+                return say(hub, chat, "TAB · эта карточка относится к другому или уже закрытому сеансу.", vec![vec![button("Выбрать агента", "new".into())]]).await;
             }
             if end {
                 if drafts.get(&chat).is_some_and(|d| d.0 == sid) { drafts.remove(&chat); }
-                return say(hub, chat, "TAB · сессия закончена, остановка её задач запрошена. История сохранена; продолжить можно в «Мои диалоги».", vec![vec![button("Мои диалоги", "sessions".into()), button("Новая сессия", "new".into())]]).await;
+                return say(hub, chat, "TAB · сеанс завершён, остановка задач запрошена. TAB не сохраняет переписку.", vec![vec![button("Выбрать агента", "new".into())]]).await;
             }
             return say(hub, chat, "TAB · остановка задачи запрошена. Диалог остаётся открытым.", session_buttons(sid)).await;
         }
         if data == "new" {
-            return say(
-                hub,
-                chat,
-                "Выберите агента",
-                c.installations
-                    .iter()
-                    .filter(|i| i.enabled)
-                    .map(|i| vec![button(i.provider.key(), format!("p:{}", i.provider.key()))])
-                    .collect(),
-            )
-            .await;
+            return agent_menu(hub, chat).await;
         }
         if let Some(p) = data.strip_prefix("p:") {
+            if selected(hub, chat).await.is_ok() { return agent_menu(hub, chat).await; }
             let p: Provider = serde_json::from_value(json!(p))?;
             let s = hub.create_agent_session(p).await?;
             set_session(hub, chat, &s.id).await?;
@@ -526,10 +507,8 @@ async fn handle(
         if data.starts_with("j:") {
             return say(hub, chat, "Выбор проекта больше не нужен. Создайте сессию и выберите агента.", vec![vec![button("Новая сессия", "new".into())]]).await;
         }
-        if let Some(sid) = data.strip_prefix("s:") {
-            let s = hub.session(sid).await?;
-            set_session(hub, chat, sid).await?;
-            return session_intro(hub, chat, &s, true).await;
+        if data.starts_with("s:") {
+            return agent_menu(hub, chat).await;
         }
         if let Some(rid) = data.strip_prefix("a:") {
             return hub
@@ -547,10 +526,8 @@ async fn handle(
         if let Some(aid) = data.strip_prefix("f:") {
             return client.asset(hub, chat, aid).await;
         }
-        if let Some(sid) = data.strip_prefix("l:") {
-            let path = hub.export_log(sid.into()).await?;
-            client.document(chat, &path).await?;
-            return Ok(());
+        if data.starts_with("l:") {
+            return say(hub, chat, "TAB больше не хранит журнал переписки.", vec![]).await;
         }
         if data == "draft" {
             let (sid, assets, text, _) = drafts
@@ -562,9 +539,9 @@ async fn handle(
         return Ok(());
     }
     match text{
-        "/start"|"/sessions"=>return sessions(hub,chat).await,
+        "/start"|"/new"|"/sessions"=>return agent_menu(hub,chat).await,
         "/pcs"|"/status"=>{let s=hub.snapshot().await?;let active=s.turns.iter().filter(|t|t.user_id==Some(user)&&["running","queued"].contains(&t.state.as_str())).count();return say(hub,chat,&format!("{} · online\nАктивных/ожидающих задач: {active}\n{}",c.machine_name,s.telegram_status),vec![]).await},
-        "/help"=>return say(hub,chat,"/sessions — выбор или создание\n/stop — остановить выбранную сессию\n/lock — отозвать доступ\n/status — состояние\n/answer ID JSON — ответ на конкретный вопрос\nФайлы: прикрепите несколько и нажмите «Отправить вложения». Оригинал изображения отправляйте как document.",vec![]).await,
+        "/help"=>return say(hub,chat,"/start — выбрать агента\n/stop — остановить выбранную сессию\n/lock — отозвать доступ\n/status — состояние\n/answer ID JSON — ответ на конкретный вопрос\nФайлы: прикрепите несколько и нажмите «Отправить вложения». Оригинал изображения отправляйте как document.",vec![]).await,
         "/stop"=>{let sid=selected(hub,chat).await?;for t in hub.snapshot().await?.turns.iter().filter(|t|t.session_id==sid&&t.user_id==Some(user)){hub.cancel(&t.id).await?}return Ok(())},
         "/files"=>{let sid=selected(hub,chat).await?;let files=hub.output_files(&sid).await?;return say(hub,chat,"Файлы из .agent-hub/outbox. Нажатие отправляет оригинальные байты как document.",files.iter().map(|a|vec![button(&a.name,format!("f:{}",a.id))]).collect()).await},
         _=>{}
@@ -645,17 +622,17 @@ async fn set_session(hub: &Hub, chat: i64, sid: &str) -> Result<()> {
 
 async fn project_events(hub: &Hub) -> Result<()> {
     hub.db.call(|c|{
-        let tx=c.transaction()?;let cursor=tx.query_row("SELECT value FROM settings WHERE key='tg_event_cursor'",[],|r|r.get::<_,String>(0)).optional()?.and_then(|s|s.parse::<i64>().ok()).unwrap_or(0);
+        let tx=c.transaction()?;let cursor=tx.query_row("SELECT value FROM runtime_settings WHERE key='tg_event_cursor'",[],|r|r.get::<_,String>(0)).optional()?.and_then(|s|s.parse::<i64>().ok()).unwrap_or(0);
         let rows={let mut s=tx.prepare("SELECT e.seq,e.body,t.body FROM events e JOIN turns t ON t.id=e.turn_id WHERE e.seq>?1 ORDER BY e.seq LIMIT 100")?;let rows=s.query_map([cursor],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?)))?.collect::<Result<Vec<_>,_>>()?;rows};
         let mut last=cursor;
         for(seq,body,turn)in rows{last=seq;let e:Event=serde_json::from_str(&body)?;let t:Turn=serde_json::from_str(&turn)?;let Some(chat)=t.chat_id else{continue};
             let sbody:String=tx.query_row("SELECT body FROM sessions WHERE id=?1",[&t.session_id],|r|r.get(0))?;let s:Session=serde_json::from_str(&sbody)?;let label=format!("{} · {}",s.provider.key(),clip(&s.title,80));
             let rich = matches!(e.kind, EventKind::Message | EventKind::Completed);
-            let mut card=None;let mut buttons=vec![];let mut progress=false;
+            let mut card=None;let mut buttons=vec![];let mut progress=false;let mut overflow=vec![];
             match e.kind{
-                EventKind::Message=>{let key=format!("tg_text:{}",t.id);let mut text=tx.query_row("SELECT value FROM settings WHERE key=?1",[&key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let delta=e.data["text"].as_str().unwrap_or("");if e.data["delta"]==true{text.push_str(delta)}else{text=delta.into()};text=clip(&text,200000);tx.execute("INSERT OR REPLACE INTO settings VALUES(?1,?2)",params![key,text])?;card=Some(format!("{label}\n{}",clip(&text,3500)));progress=true;},
+                EventKind::Message=>{let key=format!("tg_text:{}",t.id);let mut text=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[&key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let delta=e.data["text"].as_str().unwrap_or("");if e.data["delta"]==true{text.push_str(delta)}else{text=delta.into()};text=clip(&text,200000);tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES(?1,?2)",params![key,text])?;card=Some(format!("{label}\n{}",clip(&text,3500)));progress=true;},
                 EventKind::ApprovalRequest|EventKind::UserQuestion=>{let r:Interaction=serde_json::from_value(e.data)?;card=Some(format!("{label}\n{}\n{}{}",r.kind,clip(&serde_json::to_string_pretty(&r.data)?,2500),if r.local_only{"\nОтветьте на ПК: этот native dialog не имеет проверенного remote scope.".into()}else if r.kind=="question"{format!("\n/answer {} JSON\nФормат ответа зависит от вопросов; ключ — native question ID.",r.id)}else{String::new()}));if !r.local_only&&r.kind!="question"{buttons.push(vec![button("Разрешить один раз",format!("a:{}",r.id)),button("Отказать",format!("d:{}",r.id))])}buttons.push(vec![button("Остановить",format!("x:{}",t.id))]);},
-                EventKind::Completed=>{let key=format!("tg_text:{}",t.id);let text=tx.query_row("SELECT value FROM settings WHERE key=?1",[key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();card=Some(format!("{label}\n{}\n{}",e.data["state"].as_str().unwrap_or("interrupted"),clip(&text,3400)));buttons.push(vec![button("Полный журнал",format!("l:{}",t.session_id))]);progress=true;},
+                EventKind::Completed=>{let key=format!("tg_text:{}",t.id);let text=tx.query_row("SELECT value FROM runtime_settings WHERE key=?1",[key],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default();let first=clip(&text,3400);let mut rest=&text[first.len()..];while !rest.is_empty(){let chunk=clip(rest,3500);rest=&rest[chunk.len()..];overflow.push(chunk);}card=Some(format!("{label}\n{}\n{}",e.data["state"].as_str().unwrap_or("interrupted"),first));progress=true;},
                 EventKind::Error=>{card=Some(format!("{label}\nОшибка: {}",clip(&e.data.to_string(),3000)));},
                 EventKind::Progress=>{card=Some(format!("{label}\n{}",clip(&e.data.to_string(),1000)));progress=true;},
                 _=>{}
@@ -669,15 +646,17 @@ async fn project_events(hub: &Hub) -> Result<()> {
                     body["_plain_text"] = json!(text);
                 }
                 let key=if progress{Some(t.id.clone())}else{None};if let Some(ref key)=key{tx.execute("DELETE FROM outbox WHERE route_key=?1 AND state='queued'",[key])?;}tx.execute("INSERT INTO outbox(id,method,body,route_key) VALUES(?1,'sendMessage',?2,?3)",params![id(),body.to_string(),key])?;
+                for chunk in overflow { let body=json!({"chat_id":chat,"text":crate::telegram_render::markdown(&chunk),"parse_mode":"HTML","_plain_text":chunk,"reply_markup":{"inline_keyboard":session_buttons(&t.session_id)}});tx.execute("INSERT INTO outbox(id,method,body) VALUES(?1,'sendMessage',?2)",params![id(),body.to_string()])?; }
             }
         }
-        tx.execute("INSERT OR REPLACE INTO settings VALUES('tg_event_cursor',?1)",[last.to_string()])?;tx.commit()?;Ok(())
+        tx.execute("INSERT OR REPLACE INTO runtime_settings VALUES('tg_event_cursor',?1)",[last.to_string()])?;tx.commit()?;Ok(())
     }).await
 }
 async fn deliver(hub: Arc<Hub>, client: Client, stop: CancellationToken) -> Result<()> {
     let mut last_chat: HashMap<i64, tokio::time::Instant> = HashMap::new();
     while !stop.is_cancelled() {
         project_events(&hub).await?;
+        hub.db.prune_closed_sessions().await?;
         let next=hub.db.call(|c|{let row=c.query_row("SELECT id,method,body,route_key,attempts FROM outbox WHERE state='queued' AND next_at<=?1 ORDER BY rowid LIMIT 1",[now()],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,Option<String>>(3)?,r.get::<_,i64>(4)?))).optional()?;Ok(row)}).await?;
         let Some((oid, mut method, body, key, attempts)) = next else {
             tokio::select! {_=stop.cancelled()=>break,_=tokio::time::sleep(Duration::from_millis(250))=>{}}
@@ -801,7 +780,7 @@ mod tests {
         assert!(!retry_connection(&anyhow!("Webhook configured")));
     }
     #[tokio::test]
-    async fn end_session_is_bound_to_current_route_and_keeps_history() {
+    async fn end_session_is_bound_to_current_route_and_discards_context() {
         let dir = tempfile::tempdir().unwrap();
         let hub = Hub::open(dir.path().join("data")).await.unwrap();
         let p = hub.add_project("test".into(), dir.path().to_path_buf()).await.unwrap();
@@ -812,7 +791,8 @@ mod tests {
         assert_eq!(selected(&hub, 1).await.unwrap(), second.id);
         assert!(stop_session(&hub, 1, 1, &second.id, true).await.unwrap());
         assert!(selected(&hub, 1).await.is_err());
-        assert!(hub.session(&second.id).await.is_ok());
+        hub.db.prune_closed_sessions().await.unwrap();
+        assert!(hub.session(&second.id).await.is_err());
         assert!(!stop_session(&hub, 1, 1, &second.id, true).await.unwrap());
         assert!(session_buttons(&second.id).iter().flatten().all(|b| b["callback_data"].as_str().unwrap().len() <= 64));
     }

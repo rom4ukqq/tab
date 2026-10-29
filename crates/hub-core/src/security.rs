@@ -18,6 +18,31 @@ pub fn random_pairing_code() -> String {
     use rand::Rng;
     format!("{:06}", rand::rngs::OsRng.gen_range(0..1_000_000u32))
 }
+pub fn purge_tab_log_exports(data_dir: &Path) -> Result<()> {
+    let root = data_dir.canonicalize()?;
+    let exports = root.join("exports");
+    let metadata = match std::fs::symlink_metadata(&exports) {
+        Ok(value) => value,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    fn redirected(metadata: &std::fs::Metadata) -> bool {
+        #[cfg(windows)] {
+            use std::os::windows::fs::MetadataExt;
+            metadata.file_attributes() & 0x400 != 0
+        }
+        #[cfg(not(windows))] { metadata.file_type().is_symlink() }
+    }
+    if !metadata.is_dir() || redirected(&metadata) { bail!("TAB exports path must be a local directory without reparse points") }
+    for entry in std::fs::read_dir(&exports)? {
+        let entry = entry?; let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("jsonl") || path.file_stem().and_then(|s| s.to_str()).and_then(|s| uuid::Uuid::parse_str(s).ok()).is_none() { continue; }
+        let metadata = std::fs::symlink_metadata(&path)?;
+        if redirected(&metadata) || !metadata.is_file() { bail!("TAB export is not a regular local file") }
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
 fn pin_bytes(pin: &str, pepper: &str) -> Vec<u8> {
     let mut h =
         Hmac::<Sha256>::new_from_slice(pepper.as_bytes()).expect("HMAC accepts arbitrary length");

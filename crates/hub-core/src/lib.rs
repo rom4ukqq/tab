@@ -45,6 +45,7 @@ pub struct Hub {
 impl Hub {
     pub async fn open(data_dir: PathBuf) -> Result<Arc<Self>> {
         std::fs::create_dir_all(&data_dir)?;
+        security::purge_tab_log_exports(&data_dir)?;
         let db = Store::open(&data_dir.join("hub.db"))?;
         let mut config: Config = match db.setting("config").await? {
             Some(s) => serde_json::from_str(&s)?,
@@ -847,25 +848,6 @@ impl Hub {
             result.push(a)
         }
         Ok(result)
-    }
-    pub async fn export_log(&self, sid: String) -> Result<PathBuf> {
-        let dir = self.data_dir.join("exports");
-        std::fs::create_dir_all(&dir)?;
-        let path = dir.join(format!("{}.jsonl", id()));
-        let mut f = std::fs::File::create(&path)?;
-        use std::io::Write;
-        let mut cursor = 0;
-        loop {
-            let page = self.history(sid.clone(), cursor).await?;
-            if page.is_empty() {
-                break;
-            }
-            for e in page {
-                cursor = e.sequence;
-                writeln!(f, "{}", serde_json::to_string(&e)?)?
-            }
-        }
-        Ok(path)
     }
 }
 

@@ -129,11 +129,11 @@ async fn restart_does_not_replay_uncertain_work() {
     let got = s
         .call(|c| {
             Ok((
-                c.query_row("SELECT state FROM turns", [], |r| r.get::<_, String>(0))?,
-                c.query_row("SELECT state FROM interactions", [], |r| {
-                    r.get::<_, String>(0)
+                c.query_row("SELECT COUNT(*) FROM turns", [], |r| r.get::<_, i64>(0))?,
+                c.query_row("SELECT COUNT(*) FROM interactions", [], |r| {
+                    r.get::<_, i64>(0)
                 })?,
-                c.query_row("SELECT state FROM outbox", [], |r| r.get::<_, String>(0))?,
+                c.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
                 c.query_row("SELECT COUNT(*) FROM grants", [], |r| r.get::<_, i64>(0))?,
                 c.query_row("SELECT blocked_until FROM attempts", [], |r| {
                     r.get::<_, i64>(0)
@@ -145,9 +145,9 @@ async fn restart_does_not_replay_uncertain_work() {
     assert_eq!(
         got,
         (
-            "interrupted".into(),
-            "obsolete".into(),
-            "unknown".into(),
+            0,
+            0,
+            0,
             0,
             99999
         )

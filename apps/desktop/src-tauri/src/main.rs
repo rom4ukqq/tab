@@ -93,10 +93,6 @@ async fn history(h: H<'_>, session_id: String, after: i64) -> R<Vec<Event>> {
     h.history(session_id, after).await.map_err(err)
 }
 #[tauri::command]
-async fn export_log(h: H<'_>, session_id: String) -> R<PathBuf> {
-    h.export_log(session_id).await.map_err(err)
-}
-#[tauri::command]
 async fn audit(h: H<'_>) -> R<Vec<Value>> {
     h.audit_rows().await.map_err(err)
 }
@@ -285,7 +281,6 @@ fn main() {
             steer_turn,
             answer_request,
             history,
-            export_log,
             audit,
             configure_telegram,
             refresh_pairing_code,
