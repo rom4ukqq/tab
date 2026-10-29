@@ -147,8 +147,8 @@ function App() {
             <p className="muted">{t("Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.")}</p>
           </div>
           {developer && <div className="card"><h2>Developer Settings</h2>
-            <Field label={t("Иконка трея")}><select value={trayIcon} onChange={e => { const value = e.target.value; if (value === 'star' || value === 'face') setTrayIcon(value); }}><option value="star">*</option><option value="face">:3</option></select></Field>
-            <Button onClick={() => setDeveloper(false)}>{t("Скрыть Developer Settings")}</Button>
+            <Field label={t("Иконка трея")}><Dropdown aria-label={t("Иконка трея")} className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={trayIcon === 'star' ? '*' : ':3'} selectedOptions={[trayIcon]} onOptionSelect={(_, d) => { if (d.optionValue === 'star' || d.optionValue === 'face') setTrayIcon(d.optionValue); }}><Option value="star">*</Option><Option value="face">:3</Option></Dropdown></Field>
+            <div className="theme-import-row"><Button appearance="subtle" className="theme-import-button" onClick={() => setDeveloper(false)}>{t("Скрыть Developer Settings")}</Button></div>
           </div>}
           <details className="card"><summary>{t("Безопасность и журнал")}</summary><p>{t("Отзыв доступа останавливает remote-задачи и требует заново ввести PIN.")}</p>
             <div className="row"><Button onClick={() => command('revoke_access')}>{t("Отозвать доступ")}</Button><Button onClick={() => run(async () => setAudit(await invoke('audit')))}>{t("Показать аудит")}</Button></div>
