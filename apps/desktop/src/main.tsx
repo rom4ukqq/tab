@@ -99,7 +99,7 @@ function App() {
     <aside>
       <div className="brand" title="Telegram Agents Bridge"><span className="brand-mark" aria-hidden="true"/><div>TAB</div></div>
       <nav aria-label={t("Основная навигация")}>{pages.map((p, i) => <button aria-current={p === page ? 'page' : undefined} className={p === page ? 'nav active' : 'nav'} key={p} onClick={() => setPage(p)}><NavIcon index={i}/>{t(p)}</button>)}</nav>
-      <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? t("Этот компьютер")}<small>{t(snap?.telegram_status ?? 'Запуск…')}</small><small>{t("Активных задач:")}{' '}{snap?.turns.filter(active).length ?? 0}</small></div>
+      <div className="sidebar-footer"><span className="dot"/>{snap?.config.machine_name ?? t("Этот компьютер")}</div>
     </aside>
     <main>
       <header><div><div className="eyebrow">TAB / {t(page)}</div><h1>{t(page)}</h1></div></header>
@@ -138,7 +138,7 @@ function App() {
             <div className="setting"><Switch checked={dark} onChange={(_, d) => setDark(d.checked)} label={t("Тёмная тема")}/></div>
             <AccentPicker value={accent} onChange={setAccent}/>
             <Field label={t("Фон")}><Dropdown aria-label={t("Фон")} className="theme-dropdown" listbox={{ className: 'theme-listbox' }} value={backgroundThemes.find(item => item.id === background)?.name ?? t('Матрица')} selectedOptions={[background]} onOptionSelect={(_, d) => { if (backgroundThemes.some(item => item.id === d.optionValue)) setBackground(d.optionValue!); }}>{backgroundThemes.map(item => <Option key={item.id} value={item.id}>{item.name}</Option>)}</Dropdown></Field>
-            <div className="row"><Button disabled={importingTheme} onClick={() => themeFile.current?.click()}>{t(importingTheme ? 'Импорт…' : 'Импорт темы')}</Button><input ref={themeFile} type="file" accept=".zip,.agent-hub-theme.zip" hidden onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (file && !importingTheme) void addTheme(file); }}/><span className="muted">{t('ZIP из TAB Theme Generator')}</span></div>
+            <div className="theme-import-row"><Button appearance="subtle" className="theme-import-button" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></svg>} disabled={importingTheme} onClick={() => themeFile.current?.click()}>{t(importingTheme ? 'Импорт…' : 'Импорт темы')}</Button><input ref={themeFile} type="file" accept=".zip,.agent-hub-theme.zip" hidden onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (file && !importingTheme) void addTheme(file); }}/><span className="muted">{t('ZIP из TAB Theme Generator')}</span></div>
             <div className="setting"><Switch checked={animateBackground} onChange={(_, d) => setAnimateBackground(d.checked)} label={t("Анимация фона")}/></div>
             <p className="muted">{t("Закрытие окна скрывает его в трей. Команда «Выйти» завершает TAB и его задачи.")}</p>
           </div>
