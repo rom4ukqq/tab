@@ -1,0 +1,39 @@
+/* Glass is composited over our ASCII scene, never over other desktop apps. */
+.theme-dark{--hub-bg:#070b0e;--hub-sidebar:#10181db3;--hub-panel:#131d25a6;--hub-border:#b8d6e326;--hub-text:#e9eff1;--hub-muted:#a5b4bf;--hub-selected:#e4f2ff0d;--matrix-ink:#7dabb8;--hub-input:#060b1080;--glass-shadow:0 14px 40px #0003,inset 0 1px 0 #ffffff06;color-scheme:dark}
+.theme-light{--hub-bg:#e9eff0;--hub-sidebar:#ffffff8f;--hub-panel:#ffffffa6;--hub-border:#2946532e;--hub-text:#172b35;--hub-muted:#4b6470;--hub-selected:#1b465f0c;--matrix-ink:#33616d;--hub-input:#ffffff85;--glass-shadow:0 14px 40px #1937480a,inset 0 1px 0 #ffffffb3;color-scheme:light}
+html,body,#root{height:100%;overflow:hidden}
+.shell{position:relative;isolation:isolate;height:100dvh;min-height:0;overflow:hidden;grid-template-columns:220px minmax(0,1fr);grid-template-rows:42px minmax(0,1fr);background:var(--hub-bg)}
+.matrix-backdrop{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;contain:strict}
+.matrix-grid{position:absolute;inset:0;background-image:linear-gradient(var(--hub-border) 1px,transparent 1px),linear-gradient(90deg,var(--hub-border) 1px,transparent 1px);background-size:22px 22px;opacity:.22}
+.matrix-columns{position:absolute;inset:0;mask-image:linear-gradient(90deg,#000 0%,#0004 42%,#0003 65%,#000 100%)}
+.matrix-columns span{position:absolute;white-space:pre;font:12px/22px 'Cascadia Mono',Consolas,monospace;color:var(--matrix-ink);text-shadow:0 0 9px currentColor;animation:matrix-fall linear infinite;user-select:none}
+.matrix-columns span:nth-child(7n){color:#b69d38}
+.matrix-haze{position:absolute;inset:0;background:radial-gradient(ellipse at 65% 40%,transparent 0%,var(--hub-bg) 85%);opacity:.6}
+@keyframes matrix-fall{from{transform:translateY(-24%)}to{transform:translateY(65%)}}
+.matrix-paused .matrix-columns span{animation-play-state:paused}
+.window-chrome{grid-column:1/-1;display:flex;position:relative;z-index:5;height:42px;align-items:stretch;background:var(--hub-sidebar);border-bottom:1px solid var(--hub-border);backdrop-filter:blur(20px);user-select:none}
+.window-drag{display:flex;align-items:center;gap:10px;padding:0 16px;flex:1;min-width:0;font-size:12px;color:var(--hub-muted)}
+.window-symbol{color:var(--hub-accent);font-size:22px;line-height:1}.theme-light .window-symbol{color:#806300}
+.window-caption{margin-left:12px;font:9px/1 Consolas,monospace;letter-spacing:2px;opacity:.6}
+.window-controls{display:flex;height:100%}.window-controls button{display:grid;place-items:center;width:46px;border:0;background:transparent;color:var(--hub-text);padding:0;border-radius:0}
+.window-controls button:hover{background:var(--hub-selected)}.window-controls button.window-close:hover{background:#c42b35;color:#fff}
+.window-controls svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1}
+.shell aside{position:relative;top:auto;height:100%;min-height:0;overflow:auto;grid-column:1;grid-row:2;padding:28px 14px 18px;background:var(--hub-sidebar);backdrop-filter:blur(24px);border-right:1px solid var(--hub-border)}
+.shell main{grid-column:2;grid-row:2;height:100%;overflow:auto;overscroll-behavior:contain;max-width:none;margin:0;padding:36px clamp(24px,4vw,64px) 64px;scrollbar-width:thin;scrollbar-color:var(--hub-border) transparent}
+.shell main>*{max-width:1000px;margin-left:auto;margin-right:auto}
+.brand{margin:0 6px 38px;gap:11px;font-size:19px}.brand-mark{border:1px solid #feca1738;background:linear-gradient(140deg,#feca1717,#feca1705);box-shadow:inset 0 1px 0 #ffffff10;width:38px;height:38px}.theme-light .brand-mark{background:#28291f}
+.brand small{font-size:10px}.nav{border:1px solid transparent;border-radius:10px;padding:12px;transition:background .18s,border-color .18s}.nav.active{background:linear-gradient(110deg,#feca1715,transparent);border-color:#feca1740;box-shadow:inset 2px 0 var(--hub-accent)}
+.nav:hover{border-color:var(--hub-border)}.nav-icon circle{fill:var(--hub-bg)}
+.sidebar-footer{font-family:'Cascadia Mono',Consolas,monospace;font-size:11px;padding-left:7px;padding-right:7px}.sidebar-footer small{font-size:10px}
+.shell header{margin-bottom:32px}.eyebrow{font:10px/1.5 'Cascadia Mono',Consolas,monospace;letter-spacing:1.8px;text-transform:uppercase;margin-bottom:12px}
+h1{font-size:38px}h2{font-size:26px}.intro{padding:26px 16px 40px}.intro h2{font-size:36px}.intro p{line-height:1.7}
+.card,.banner,.empty{background:var(--hub-panel);border:1px solid var(--hub-border);backdrop-filter:blur(18px);border-radius:18px;box-shadow:var(--glass-shadow)}
+.card{padding:25px 28px;margin-bottom:18px}.card p{color:var(--hub-muted)}.card code{color:var(--hub-muted)}
+.request{border-color:#feca1770}.banner.error{border-color:#d9747480}.empty{border-style:dashed}
+.shell .fui-Input,.shell .fui-Textarea{background:var(--hub-input);border-color:var(--hub-border);border-radius:10px}.shell .fui-Button{border-radius:10px}.shell .fui-Button:not(:disabled){transition:background .18s,border-color .18s}
+.shell .fui-Input input{color:var(--hub-text)}.shell pre{background:var(--hub-input);border:1px solid var(--hub-border)}
+.shell :focus-visible{outline:2px solid var(--hub-accent);outline-offset:3px}.theme-light :focus-visible{outline-color:#806300}
+@media(max-width:1000px){.shell{grid-template-columns:190px minmax(0,1fr)}.shell main{padding:26px 24px 44px}.brand{font-size:17px;gap:8px}.card{padding:22px}.intro h2{font-size:30px}.window-caption{display:none}}
+@media(prefers-reduced-motion:reduce){.matrix-columns span{animation:none}.shell .nav,.shell .fui-Button{transition:none}}
+@media(prefers-reduced-transparency:reduce){.theme-dark{--hub-panel:#131d25;--hub-sidebar:#10181d}.theme-light{--hub-panel:#fff;--hub-sidebar:#f2f5f6}.card,.banner,.window-chrome,.shell aside{backdrop-filter:none}}
+@media(forced-colors:active){.matrix-backdrop{display:none}.window-chrome,.shell aside,.card,.banner,.empty{background:Canvas;color:CanvasText;backdrop-filter:none;border-color:CanvasText}.window-controls button{color:ButtonText}.window-controls button:hover{background:Highlight;color:HighlightText}.nav.active{border-color:Highlight;box-shadow:none}.window-symbol{color:CanvasText}}
